@@ -1,3 +1,31 @@
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: number;
+};
+
+export type AgentSessionSummary = {
+  id: string;
+  title: string;
+  sandboxName: string;
+  claudeSessionName: string;
+  createdAt: number;
+  updatedAt: number;
+  status: "active" | "stopped";
+  messageCount: number;
+};
+
+export type {
+  AgentActivityItem,
+  AgentStreamEvent,
+} from "@/lib/claude-stream-parser";
+
+import type {
+  AgentActivityItem,
+  AgentStreamEvent,
+} from "@/lib/claude-stream-parser";
+
 export type AgentProgressEvent =
   | {
       type: "step";
@@ -8,22 +36,29 @@ export type AgentProgressEvent =
     }
   | { type: "log"; stream: "stdout" | "stderr"; text: string }
   | {
+      type: "session";
+      session: AgentSessionSummary;
+    }
+  | {
+      type: "agent_event";
+      event: AgentStreamEvent;
+    }
+  | {
+      type: "activity_snapshot";
+      activity: AgentActivityItem[];
+      streamingText: string;
+    }
+  | {
+      type: "assistant_message";
+      content: string;
+    }
+  | {
       type: "complete";
+      sessionId: string;
       sandboxId: string;
-      exitCode: number;
-      stdout: string;
-      stderr: string;
       durationMs: number;
     }
   | { type: "error"; message: string };
-
-export type AgentRunResult = {
-  sandboxId: string;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  durationMs: number;
-};
 
 export class AgentConfigError extends Error {
   constructor(message: string) {
@@ -72,4 +107,31 @@ export function parseAgentEvent(line: string): AgentProgressEvent | null {
   } catch {
     return null;
   }
+}
+
+export function toSessionSummary(session: {
+  id: string;
+  title: string;
+  sandboxName: string;
+  claudeSessionName: string;
+  createdAt: number;
+  updatedAt: number;
+  status: "active" | "stopped";
+  messages: unknown[];
+}): AgentSessionSummary {
+  return {
+    id: session.id,
+    title: session.title,
+    sandboxName: session.sandboxName,
+    claudeSessionName: session.claudeSessionName,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    status: session.status,
+    messageCount: session.messages.length,
+  };
+}
+
+export function makeSessionTitle(prompt: string): string {
+  const trimmed = prompt.trim().replace(/\s+/g, " ");
+  return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
 }
