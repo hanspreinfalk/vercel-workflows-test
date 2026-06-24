@@ -3,7 +3,9 @@ import {
   inferFlowActionsFromUserMessage,
   isActionsEmpty,
   isCreateOrBuildRequest,
+  isEndToEndBuildRequest,
 } from "@/lib/flow-builder-intents";
+import { formatRunDiagnosticsForChat, type FlowRunContext } from "@/lib/flow-run-diagnostics";
 import { getSkillDisplayName, normalizeAgentSkill } from "@/lib/agent-skills";
 import type { AgentSkill, FlowEdge, FlowNode, NodePermission } from "@/lib/flow-types";
 import {
@@ -16,10 +18,25 @@ import {
 
 export type FlowBuilderChatRole = "user" | "assistant";
 
+export type FlowBuilderChatSegment =
+  | { type: "text"; content: string }
+  | { type: "actions"; summary: string[] }
+  | { type: "run_report"; status: string; summary: string[] };
+
 export type FlowBuilderChatMessage = {
   role: FlowBuilderChatRole;
   content: string;
+  /** Ordered assistant output: text and applied canvas actions as they streamed. */
+  segments?: FlowBuilderChatSegment[];
 };
+
+export type FlowBuilderChatStreamEvent =
+  | { type: "text_start" }
+  | { type: "token"; token: string }
+  | { type: "text_end" }
+  | { type: "actions"; actions: FlowBuilderActions }
+  | { type: "done"; content: string; actions: FlowBuilderActions }
+  | { type: "error"; message: string };
 
 export type FlowBuilderChatContext = {
   name: string;
@@ -29,6 +46,12 @@ export type FlowBuilderChatContext = {
   activeRunId?: string | null;
   runStatus?: string | null;
   isRunning?: boolean;
+  lastRun?: FlowRunContext | null;
+};
+
+export type FlowNodePosition = {
+  x: number;
+  y: number;
 };
 
 export type NodeFieldUpdate = {
@@ -38,6 +61,8 @@ export type NodeFieldUpdate = {
   payload?: string;
   skill?: Partial<AgentSkill>;
   permissions?: NodePermission[];
+  /** Canvas coordinates (React Flow position). */
+  position?: FlowNodePosition;
 };
 
 /** @deprecated Use NodeFieldUpdate */
@@ -51,7 +76,7 @@ export type AddFlowNodeAction = {
   payload?: string;
   skill?: Partial<AgentSkill>;
   permissions?: NodePermission[];
-  position?: { x: number; y: number };
+  position?: FlowNodePosition;
   /** Auto-connect an edge from this node id to the new node. */
   connectFrom?: string;
 };
@@ -104,6 +129,21 @@ Do NOT only describe what you would do. Do NOT put JSON in markdown fences — u
 - "Add an OpenCode node for CI fixes" → addNodes with connectFrom
 - "Run the flow" → runFlow: true
 - "Stop" → stopFlow: true
+- "Move Agent 1 to the right" → updates with nodeId + position { x, y }
+- "Build a flow from start to finish" → configure the flow, runFlow: true, then read run logs in context and fix if needed
+
+### Run logs, testing, and self-improvement
+- Context includes **lastRun** with execution logs, per-node status, outputs, errors, and final results
+- When the user asks to build from start to finish, test, debug, or self-improve: configure the flow → **runFlow: true** → analyze lastRun → fix prompts/skills/permissions/payload/wiring → run again until output is good
+- Read node outputs carefully. Empty output, stack traces, or irrelevant content means the workflow needs fixes
+- Common fixes: add **github** permission, set Start **payload** (repo URL), improve **skill.instructions**, clarify **prompt**, add missing **edges**, swap agent type
+
+### Layout (node coordinates)
+- Every node in the snapshot has **position**: { x, y } (React Flow canvas coordinates)
+- Move existing nodes via **updates**: { "nodeId": "node-1", "position": { "x": 320, "y": 120 } }
+- Place new nodes via **addNodes** with a **position** field
+- Typical left-to-right layout: Start ~{ x: 40, y: 140 }, agents ~{ x: 300–900, y: 120 }, Stop ~{ x: 900, y: 140 }
+- When arranging multiple nodes, update all affected positions in one tool call
 
 ### Building flows from scratch or retargeting defaults
 Default flows start with only a Start node. For a single-purpose flow:
@@ -213,35 +253,40 @@ function findNodeUpdate(
 }
 
 function applyNodeUpdate(node: FlowNode, update: NodeFieldUpdate): FlowNode {
-  if (node.type === "manual-trigger") {
+  const withPosition =
+    update.position !== undefined
+      ? { ...node, position: update.position }
+      : node;
+
+  if (withPosition.type === "manual-trigger") {
     return {
-      ...node,
+      ...withPosition,
       data: {
-        ...node.data,
+        ...withPosition.data,
         ...(update.label !== undefined ? { label: update.label } : {}),
         ...(update.payload !== undefined ? { payload: update.payload } : {}),
       },
     };
   }
 
-  if (node.type === "stop") {
+  if (withPosition.type === "stop") {
     return {
-      ...node,
+      ...withPosition,
       data: {
-        ...node.data,
+        ...withPosition.data,
         ...(update.label !== undefined ? { label: update.label } : {}),
       },
     };
   }
 
-  if (!isAgentNode(node)) {
-    return node;
+  if (!isAgentNode(withPosition)) {
+    return withPosition;
   }
 
   return {
-    ...node,
+    ...withPosition,
     data: {
-      ...node.data,
+      ...withPosition.data,
       ...(update.label !== undefined ? { label: update.label } : {}),
       ...(update.prompt !== undefined ? { prompt: update.prompt } : {}),
       ...(update.permissions !== undefined
@@ -250,7 +295,7 @@ function applyNodeUpdate(node: FlowNode, update: NodeFieldUpdate): FlowNode {
       ...(update.skill !== undefined
         ? {
             skill: normalizeAgentSkill({
-              ...node.data.skill,
+              ...withPosition.data.skill,
               ...update.skill,
             }),
           }
@@ -318,6 +363,26 @@ export function buildFlowContextMessage(flow: FlowBuilderChatContext): string {
     ? `Active run: ${flow.activeRunId} (${flow.runStatus ?? "unknown"})`
     : "No active run.";
 
+  const lastRunSection = flow.lastRun?.runId
+    ? [
+        "Latest workflow run diagnostics:",
+        formatRunDiagnosticsForChat({
+          runId: flow.lastRun.runId,
+          status:
+            flow.lastRun.status === "completed" ||
+            flow.lastRun.status === "failed" ||
+            flow.lastRun.status === "cancelled" ||
+            flow.lastRun.status === "running"
+              ? flow.lastRun.status
+              : "failed",
+          events: flow.lastRun.events ?? [],
+          nodeStates: flow.lastRun.nodeOutputs ?? {},
+          results: flow.lastRun.results ?? null,
+          error: flow.lastRun.error ?? null,
+        }),
+      ].join("\n\n")
+    : "No workflow run logs available yet.";
+
   return [
     "Current flow snapshot (JSON):",
     JSON.stringify(snapshot, null, 2),
@@ -328,6 +393,8 @@ export function buildFlowContextMessage(flow: FlowBuilderChatContext): string {
       : "No node selected.",
     runLine,
     flow.isRunning ? "A workflow run is in progress." : "No run in progress.",
+    "",
+    lastRunSection,
   ].join("\n");
 }
 
@@ -393,7 +460,7 @@ function looksLikeFlowActions(value: unknown): value is FlowBuilderActions {
 const APPLY_FLOW_ACTIONS_TOOL = {
   name: "apply_flow_actions",
   description:
-    "Apply changes to the flow builder canvas: add/remove/connect nodes, configure skills and prompts, rename flow, run or stop execution. Required for any build or modify request.",
+    "Apply changes to the flow builder canvas: add/remove/connect nodes, move nodes by coordinates, configure skills and prompts, rename flow, run or stop execution. Required for any build or modify request.",
   input_schema: {
     type: "object",
     properties: {
@@ -416,6 +483,15 @@ const APPLY_FLOW_ACTIONS_TOOL = {
               items: { type: "string", enum: ["github"] },
             },
             connectFrom: { type: "string" },
+            position: {
+              type: "object",
+              description: "Canvas position { x, y }",
+              properties: {
+                x: { type: "number" },
+                y: { type: "number" },
+              },
+              required: ["x", "y"],
+            },
             skill: {
               type: "object",
               properties: {
@@ -451,6 +527,15 @@ const APPLY_FLOW_ACTIONS_TOOL = {
             label: { type: "string" },
             prompt: { type: "string" },
             payload: { type: "string" },
+            position: {
+              type: "object",
+              description: "Canvas position { x, y }",
+              properties: {
+                x: { type: "number" },
+                y: { type: "number" },
+              },
+              required: ["x", "y"],
+            },
             permissions: {
               type: "array",
               items: { type: "string", enum: ["github"] },
@@ -503,7 +588,7 @@ function resolveFlowActions(params: {
   return {};
 }
 
-export { isActionsEmpty, isCreateOrBuildRequest };
+export { isActionsEmpty, isCreateOrBuildRequest, isEndToEndBuildRequest };
 
 /** @deprecated Use parseFlowActions */
 export function parseAgentUpdates(content: string): NodeFieldUpdate[] {
@@ -635,16 +720,23 @@ export function applyFlowActions(params: {
 
   if (params.actions.updates?.length) {
     let updateCount = 0;
+    let movedCount = 0;
     nodes = nodes.map((node) => {
       const update = findNodeUpdate(node, params.actions.updates!);
       if (!update) {
         return node;
       }
       updateCount += 1;
+      if (update.position !== undefined) {
+        movedCount += 1;
+      }
       return applyNodeUpdate(node, update);
     });
     if (updateCount > 0) {
       summary.push(`Updated ${updateCount} node${updateCount === 1 ? "" : "s"}`);
+    }
+    if (movedCount > 0) {
+      summary.push(`Repositioned ${movedCount} node${movedCount === 1 ? "" : "s"}`);
     }
   }
 
@@ -690,7 +782,7 @@ export function applyAgentUpdates(
 export async function streamFlowBuilderChat(params: {
   messages: FlowBuilderChatMessage[];
   flow: FlowBuilderChatContext;
-  onToken: (token: string) => void;
+  onEvent: (event: FlowBuilderChatStreamEvent) => void;
 }): Promise<{ content: string; actions: FlowBuilderActions }> {
   const apiKey = getAnthropicApiKey();
   const contextMessage = buildFlowContextMessage(params.flow);
@@ -725,7 +817,17 @@ export async function streamFlowBuilderChat(params: {
         },
         ...params.messages.map((message) => ({
           role: message.role,
-          content: message.content,
+          content:
+            message.role === "assistant" && message.segments?.length
+              ? message.segments
+                  .filter(
+                    (segment): segment is Extract<FlowBuilderChatSegment, { type: "text" }> =>
+                      segment.type === "text"
+                  )
+                  .map((segment) => segment.content)
+                  .join("\n\n")
+                  .trim() || "(Applied canvas changes)"
+              : message.content,
         })),
       ],
     }),
@@ -743,6 +845,8 @@ export async function streamFlowBuilderChat(params: {
   let content = "";
   let toolInputJson = "";
   let toolActions: FlowBuilderActions | null = null;
+  let activeBlockType: "text" | "tool_use" | null = null;
+  let activeToolInputJson = "";
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -771,13 +875,23 @@ export async function streamFlowBuilderChat(params: {
           content_block?: { type?: string; name?: string };
         };
 
+        if (event.type === "content_block_start") {
+          if (event.content_block?.type === "text") {
+            activeBlockType = "text";
+            params.onEvent({ type: "text_start" });
+          } else if (event.content_block?.type === "tool_use") {
+            activeBlockType = "tool_use";
+            activeToolInputJson = "";
+          }
+        }
+
         if (
           event.type === "content_block_delta" &&
           event.delta?.type === "text_delta" &&
           event.delta.text
         ) {
           content += event.delta.text;
-          params.onToken(event.delta.text);
+          params.onEvent({ type: "token", token: event.delta.text });
         }
 
         if (
@@ -786,14 +900,27 @@ export async function streamFlowBuilderChat(params: {
           event.delta.partial_json
         ) {
           toolInputJson += event.delta.partial_json;
+          if (activeBlockType === "tool_use") {
+            activeToolInputJson += event.delta.partial_json;
+          }
         }
 
-        if (event.type === "content_block_stop" && toolInputJson) {
-          try {
-            toolActions = JSON.parse(toolInputJson) as FlowBuilderActions;
-          } catch {
-            toolActions = null;
+        if (event.type === "content_block_stop") {
+          if (activeBlockType === "text") {
+            params.onEvent({ type: "text_end" });
+          } else if (activeBlockType === "tool_use" && activeToolInputJson) {
+            try {
+              const blockActions = JSON.parse(
+                activeToolInputJson
+              ) as FlowBuilderActions;
+              toolActions = blockActions;
+              params.onEvent({ type: "actions", actions: blockActions });
+            } catch {
+              // Wait for final parse below.
+            }
           }
+          activeBlockType = null;
+          activeToolInputJson = "";
         }
       } catch {
         // Ignore malformed SSE chunks.
@@ -815,6 +942,8 @@ export async function streamFlowBuilderChat(params: {
     messages: params.messages,
     flow: params.flow,
   });
+
+  params.onEvent({ type: "done", content, actions });
 
   return { content, actions };
 }

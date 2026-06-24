@@ -32,6 +32,17 @@ export function isCreateOrBuildRequest(message: string): boolean {
   );
 }
 
+export function isEndToEndBuildRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    /\b(start to finish|end to end|from scratch)\b/.test(lower) ||
+    (/\b(build|create|make)\b/.test(lower) &&
+      /\b(test|run|try|verify|debug|fix|until it works|self.?improv)\b/.test(
+        lower
+      ))
+  );
+}
+
 export function isRepoSummarizerRequest(message: string): boolean {
   const lower = message.toLowerCase();
   return (
@@ -63,14 +74,15 @@ export function inferFlowActionsFromUserMessage(
   }
 
   if (isRepoSummarizerRequest(message) || /\bgithub\b/.test(message.toLowerCase())) {
-    return buildRepoSummarizerActions(flow);
+    return buildRepoSummarizerActions(flow, message);
   }
 
   return buildSingleAgentFromRequest(flow, message);
 }
 
 function buildRepoSummarizerActions(
-  flow: FlowBuilderChatContext
+  flow: FlowBuilderChatContext,
+  message: string
 ): FlowBuilderActions {
   const trigger = flow.nodes.find((node) => node.type === "manual-trigger");
   const agents = flow.nodes.filter(isAgentNode);
@@ -138,6 +150,10 @@ function buildRepoSummarizerActions(
     }
   }
 
+  if (isEndToEndBuildRequest(message)) {
+    actions.runFlow = true;
+  }
+
   return actions;
 }
 
@@ -181,5 +197,6 @@ function buildSingleAgentFromRequest(
             connectFrom: trigger?.id,
           },
         ],
+    ...(isEndToEndBuildRequest(message) ? { runFlow: true } : {}),
   };
 }

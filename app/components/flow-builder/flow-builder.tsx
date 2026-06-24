@@ -150,7 +150,7 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
     return "lg:grid-cols-[1fr]";
   }, [chatOpen, inspectorOpen]);
 
-  const { nodeStates, activeNodeId, runStatus, error: runError, events } =
+  const { nodeStates, activeNodeId, runStatus, error: runError, events, results } =
     useFlowRunStream(activeRunId);
 
   const displayNodes = useMemo(
@@ -256,7 +256,7 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
         }
 
         setActiveRunId(data.runId);
-        return { ok: true as const };
+        return { ok: true as const, runId: data.runId };
       } catch (runError) {
         const message =
           runError instanceof Error ? runError.message : "Failed to run flow";
@@ -525,6 +525,18 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
             activeRunId={activeRunId}
             runStatus={runStatus}
             isRunning={isRunning}
+            lastRun={
+              activeRunId
+                ? {
+                    runId: activeRunId,
+                    status: runStatus,
+                    error: runError,
+                    events,
+                    nodeOutputs: nodeStates,
+                    results,
+                  }
+                : null
+            }
             onApplyFlow={applyFlowFromChat}
             onRunFlow={(payload) => handleRun(payload)}
             onStopFlow={handleStopRun}

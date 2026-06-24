@@ -2,6 +2,7 @@ import {
   streamFlowBuilderChat,
   type FlowBuilderChatContext,
   type FlowBuilderChatMessage,
+  type FlowBuilderChatStreamEvent,
 } from "@/lib/flow-builder-chat";
 
 export const runtime = "nodejs";
@@ -32,23 +33,15 @@ export async function POST(
 
   const stream = new ReadableStream({
     async start(controller) {
-      const emit = (event: object) => {
+      const emit = (event: FlowBuilderChatStreamEvent) => {
         controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       };
 
       try {
-        const result = await streamFlowBuilderChat({
+        await streamFlowBuilderChat({
           messages,
           flow,
-          onToken: (token) => {
-            emit({ type: "token", token });
-          },
-        });
-
-        emit({
-          type: "done",
-          content: result.content,
-          actions: result.actions,
+          onEvent: emit,
         });
         controller.close();
       } catch (error) {
