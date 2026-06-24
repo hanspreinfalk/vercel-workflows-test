@@ -1,0 +1,81 @@
+@media (prefers-color-scheme: dark) {
+  .flow-builder-canvas .react-flow__controls {
+    background: #18181b;
+    border: 1px solid #3f3f46;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
+  }
+
+  .flow-builder-canvas .react-flow__controls-button {
+    background: #27272a;
+    border-bottom: 1px solid #3f3f46;
+    fill: #e4e4e7;
+    color: #e4e4e7;
+  }
+
+  .flow-builder-canvas .react-flow__controls-button:hover {
+    background: #3f3f46;
+  }
+
+  .flow-builder-canvas .react-flow__controls-button svg {
+    fill: currentColor;
+  }
+
+  .flow-builder-canvas .react-flow__minimap {
+    background: #18181b;
+    border: 1px solid #3f3f46;
+  }
+
+  .flow-builder-canvas .react-flow__minimap-mask {
+    fill: rgb(0 0 0 / 65%);
+  }
+
+  .flow-builder-canvas .react-flow__minimap-node {
+    fill: #52525b;
+    stroke: #71717a;
+  }
+}
+
+.flow-builder-canvas .react-flow__controls-button svg {
+  max-width: 14px;
+  max-height: 14px;
+}
+
+.flow-node-spinner {
+  position: relative;
+  padding: 2px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.flow-node-spinner::before {
+  content: "";
+  position: absolute;
+  inset: -150%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 280deg,
+    #3b82f6 310deg,
+    #93c5fd 340deg,
+    #3b82f6 360deg
+  );
+  animation: flow-node-border-spin 1.4s linear infinite;
+}
+
+.flow-node-spinner__inner {
+  position: relative;
+  border-radius: calc(0.75rem - 2px);
+  background: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .flow-node-spinner__inner {
+    background: #09090b;
+  }
+}
+
+@keyframes flow-node-border-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

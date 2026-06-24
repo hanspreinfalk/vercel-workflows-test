@@ -1,11 +1,12 @@
 import Link from "next/link";
 
 type SiteHeaderProps = {
-  active?: "home" | "workflow" | "sandbox" | "agent";
+  active?: "home" | "workflow" | "builder" | "sandbox" | "agent";
 };
 
 const links = [
   { href: "/", label: "Workflow", id: "workflow" as const },
+  { href: "/builder", label: "Builder", id: "builder" as const },
   { href: "/sandbox", label: "Sandbox", id: "sandbox" as const },
   { href: "/agent", label: "Agent", id: "agent" as const },
 ];

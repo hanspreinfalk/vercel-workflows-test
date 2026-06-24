@@ -123,6 +123,77 @@ export async function configureGitIdentity(
   await runGitCommand(sandbox, ["config", "--global", "user.email", email]);
 }
 
+const GH_CLI_VERSION = "2.63.2";
+
+export async function installGithubCli(sandbox: Sandbox) {
+  const check = await sandbox.runCommand({
+    cmd: "bash",
+    args: ["-lc", "command -v gh"],
+  });
+
+  if ((check.exitCode ?? 1) === 0) {
+    return;
+  }
+
+  const install = await sandbox.runCommand({
+    cmd: "bash",
+    args: [
+      "-lc",
+      [
+        "set -euo pipefail",
+        `GH_VERSION="${GH_CLI_VERSION}"`,
+        'ARCH="$(uname -m)"',
+        'case "$ARCH" in',
+        '  x86_64|amd64) GH_ARCH="amd64" ;;',
+        '  aarch64|arm64) GH_ARCH="arm64" ;;',
+        '  *) echo "Unsupported architecture: $ARCH"; exit 1 ;;',
+        "esac",
+        'URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"',
+        'EXTRACT_DIR="/tmp/gh_${GH_VERSION}_linux_${GH_ARCH}"',
+        'rm -rf "$EXTRACT_DIR" /tmp/gh.tgz',
+        'if command -v curl >/dev/null 2>&1; then',
+        '  curl -fsSL "$URL" -o /tmp/gh.tgz',
+        'elif command -v wget >/dev/null 2>&1; then',
+        '  wget -q "$URL" -O /tmp/gh.tgz',
+        "else",
+        '  echo "Need curl or wget to install GitHub CLI"; exit 1',
+        "fi",
+        'tar -xzf /tmp/gh.tgz -C /tmp',
+        'test -x "$EXTRACT_DIR/bin/gh"',
+        'install -m 755 "$EXTRACT_DIR/bin/gh" /usr/local/bin/gh',
+        'rm -rf "$EXTRACT_DIR" /tmp/gh.tgz',
+        "gh --version",
+      ].join("\n"),
+    ],
+    sudo: true,
+    timeoutMs: 5 * 60 * 1000,
+  });
+
+  if ((install.exitCode ?? 1) !== 0) {
+    throw new Error((await install.stderr()) || "Failed to install GitHub CLI");
+  }
+}
+
+export async function configureGithubCliAuth(sandbox: Sandbox, token: string) {
+  const auth = await sandbox.runCommand({
+    cmd: "bash",
+    args: ["-lc", 'printf %s "$GH_TOKEN" | gh auth login --with-token'],
+    env: { GH_TOKEN: token },
+    timeoutMs: 60_000,
+  });
+
+  if ((auth.exitCode ?? 1) !== 0) {
+    throw new Error(
+      (await auth.stderr()) || "Failed to authenticate GitHub CLI"
+    );
+  }
+}
+
+export async function prepareGithubCli(sandbox: Sandbox, token: string) {
+  await installGithubCli(sandbox);
+  await configureGithubCliAuth(sandbox, token);
+}
+
 export async function cloneGithubRepo(sandbox: Sandbox, repoUrl: string) {
   const cloneUrl = repoUrl.endsWith(".git") ? repoUrl : `${repoUrl}.git`;
   await runGitCommand(sandbox, ["clone", cloneUrl, SANDBOX_REPO_DIR]);
@@ -165,9 +236,10 @@ This sandbox is preconfigured for GitHub.
 - Project repo: \`./${SANDBOX_REPO_DIR}/\` (${repoName ?? "GitHub repo"})
 - GitHub user: ${context.username}
 - Git identity and HTTPS credentials are already configured
+- GitHub CLI (\`gh\`) is installed and authenticated — prefer \`gh repo view\`, \`gh pr list\`, \`gh api\`, etc.
 - Use \`git log\`, \`git fetch\`, and \`git pull\` from \`./${SANDBOX_REPO_DIR}/\`
 
-You are already inside the cloned repo when running commands here. Do not ask the user for their GitHub username unless git operations fail.
+You are already inside the cloned repo when running commands here. Do not ask the user for their GitHub username unless git or gh operations fail.
 `,
         "utf-8"
       ),
@@ -197,6 +269,7 @@ export async function prepareGithubWorkspace(
 
   await configureGithubGitAccess(sandbox, context.token);
   await configureGitIdentity(sandbox, context.username, context.email);
+  await prepareGithubCli(sandbox, context.token);
   await ensureGithubRepo(sandbox, context);
   await writeWorkspaceGuide(sandbox, context);
 

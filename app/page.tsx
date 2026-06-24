@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/app/components/site-header";
 import { SignupForm } from "@/app/components/signup-form";
+import { StartWorkflowButton } from "@/app/components/start-workflow-button";
 
 export default function Home() {
   return (
@@ -18,10 +19,21 @@ export default function Home() {
               </h1>
               <p className="text-sm leading-6 text-zinc-600 dark:text-zinc-400">
                 Start a durable signup workflow and watch each step complete in
-                real time.
+                real time. The UI can start new runs; workflow logic itself is
+                defined in code under{" "}
+                <code className="rounded bg-zinc-200 px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-800">
+                  workflows/
+                </code>
+                .
               </p>
             </div>
             <SignupForm />
+            <div className="mt-4 flex flex-col gap-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+              <p className="text-xs text-zinc-500">
+                Or start instantly with a demo email — no form required.
+              </p>
+              <StartWorkflowButton label="Start demo workflow" />
+            </div>
           </main>
 
           <section className="flex flex-col justify-between rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">

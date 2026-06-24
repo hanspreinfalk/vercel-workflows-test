@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { StartWorkflowButton } from "@/app/components/start-workflow-button";
 import {
   parseProgressEvent,
   WORKFLOW_STEPS,
@@ -203,12 +204,15 @@ export function WorkflowViewer({ runId }: WorkflowViewerProps) {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-6 py-16">
       <div className="flex flex-col gap-3">
-        <Link
-          href="/"
-          className="text-sm text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200"
-        >
-          ← Start another signup
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/"
+            className="text-sm text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200"
+          >
+            ← Back to home
+          </Link>
+          <StartWorkflowButton label="Start new workflow" />
+        </div>
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium uppercase tracking-wide text-zinc-500">
             Signup workflow
