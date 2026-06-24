@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Workflow Signup Demo",
-  description: "Durable signup workflow with live progress",
+  title: "Vercel Workflows & Sandbox Demo",
+  description: "Durable workflows and isolated code execution on Vercel",
 };
 
 export default function RootLayout({
