@@ -3,7 +3,7 @@ import {
   type FlowBuilderChatContext,
   type FlowBuilderChatMessage,
   type FlowBuilderChatStreamEvent,
-} from "@/lib/flow-builder-chat";
+} from "@/lib/flow-builder/chat";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;

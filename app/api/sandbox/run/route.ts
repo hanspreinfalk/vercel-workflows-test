@@ -3,7 +3,7 @@ import {
   runJavaScriptInSandbox,
   SandboxConfigError,
   validateSandboxCode,
-} from "@/lib/run-in-sandbox";
+} from "@/lib/sandbox/run-playground";
 
 export const runtime = "nodejs";
 

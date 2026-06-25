@@ -1,8 +1,8 @@
 import { start } from "workflow/api";
-import { isAgentNode } from "@/lib/agent-node-utils";
-import { getFlow } from "@/lib/flow-store";
-import { registerFlowRunWithPersistence } from "@/lib/flow-run-cancel";
-import type { FlowEdge, FlowNode, FlowRunSnapshot } from "@/lib/flow-types";
+import { isAgentNode } from "@/lib/agent/node-utils";
+import { getFlow } from "@/lib/flow/store";
+import { registerFlowRunWithPersistence } from "@/lib/flow/run-cancel";
+import type { FlowEdge, FlowNode, FlowRunSnapshot } from "@/lib/flow/types";
 import { executeBuiltFlow } from "@/workflows/built-flow";
 import { NextResponse } from "next/server";
 

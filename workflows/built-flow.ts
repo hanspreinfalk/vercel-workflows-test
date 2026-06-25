@@ -1,16 +1,16 @@
 import { FatalError, getWritable, getWorkflowMetadata } from "workflow";
-import { getSkillDisplayName } from "@/lib/agent-skills";
-import type { AgentFlowNode } from "@/lib/agent-node-utils";
-import { isAgentNode } from "@/lib/agent-node-utils";
+import { getSkillDisplayName } from "@/lib/agent/skills";
+import type { AgentFlowNode } from "@/lib/agent/node-utils";
+import { isAgentNode } from "@/lib/agent/node-utils";
 import {
   buildNodePrompt,
   collectSecretsToRedact,
   getExecutionOrder,
-} from "@/lib/flow-graph";
-import { clearFlowRun, isFlowRunCancelled } from "@/lib/flow-run-state";
-import { getNodeLabel, type FlowNode, type FlowRunSnapshot } from "@/lib/flow-types";
-import { runAgentNode } from "@/lib/run-agent-node";
-import type { BuiltFlowProgressEvent } from "@/lib/flow-progress";
+} from "@/lib/flow/graph";
+import { clearFlowRun, isFlowRunCancelled } from "@/lib/flow/run-state";
+import { getNodeLabel, type FlowNode, type FlowRunSnapshot } from "@/lib/flow/types";
+import { runAgentNode } from "@/lib/agent/run-node";
+import type { BuiltFlowProgressEvent } from "@/lib/flow/progress";
 
 async function emitProgress(event: Omit<BuiltFlowProgressEvent, "timestamp">) {
   const writer = getWritable<string>().getWriter();

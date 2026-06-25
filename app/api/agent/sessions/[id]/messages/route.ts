@@ -1,9 +1,9 @@
-import { continueAgentSession } from "@/lib/agent-chat";
+import { continueAgentSession } from "@/lib/agent/chat";
 import {
   AgentConfigError,
   validateAgentPrompt,
-} from "@/lib/claude-agent";
-import { SandboxConfigError } from "@/lib/run-in-sandbox";
+} from "@/lib/agent/claude-agent";
+import { SandboxConfigError } from "@/lib/sandbox/run-playground";
 
 export const runtime = "nodejs";
 export const maxDuration = 600;

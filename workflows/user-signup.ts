@@ -1,6 +1,6 @@
 import { FatalError, getWritable } from "workflow";
 import { sleep } from "workflow";
-import type { WorkflowProgressEvent } from "@/lib/workflow-progress";
+import type { WorkflowProgressEvent } from "@/lib/legacy/workflow-progress";
 
 async function emitProgress(
   event: Omit<WorkflowProgressEvent, "timestamp">

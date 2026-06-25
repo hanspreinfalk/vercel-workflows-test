@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createFlow } from "@/lib/flow-store";
+import { createFlow } from "@/lib/flow/store";
 
 export const dynamic = "force-dynamic";
 

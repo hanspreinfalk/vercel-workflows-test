@@ -1,14 +1,16 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { MobileBackButton } from "@/app/components/chatzy/mobile-back-button";
 import {
   parseAgentEvent,
   type AgentActivityItem,
   type AgentProgressEvent,
   type AgentSessionSummary,
-} from "@/lib/claude-agent";
-import { streamEventToActivity } from "@/lib/claude-stream-parser";
-import type { ChatMessage } from "@/lib/agent-session-store";
+} from "@/lib/agent/claude-agent";
+import { streamEventToActivity } from "@/lib/agent/claude-stream-parser";
+import type { ChatMessage } from "@/lib/agent/session-store";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_PROMPT =
   "Create hello.js that prints the first 10 prime numbers, run it with Node.js, and tell me the output.";
@@ -33,7 +35,7 @@ function ActivityFeed({
 
   return (
     <div
-      className={`space-y-2 ${compact ? "mt-2" : "rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/60"}`}
+      className={`space-y-2 ${compact ? "mt-2" : "rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3"}`}
     >
       {thinking ? (
         <details className="group rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
@@ -49,7 +51,7 @@ function ActivityFeed({
       {activity.map((item) => (
         <div
           key={item.id}
-          className="rounded-lg border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950"
+          className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2"
         >
           <div className="flex items-center gap-2">
             <span
@@ -85,6 +87,7 @@ export function AgentChatPanel() {
   const [liveActivity, setLiveActivity] = useState<AgentActivityItem[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [liveThinking, setLiveThinking] = useState("");
+  const [mobileShowChat, setMobileShowChat] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -241,6 +244,7 @@ export function AgentChatPanel() {
     resetLiveStream();
     setIsRunning(true);
     setDraft("");
+    setMobileShowChat(true);
 
     const isNewSession = !activeSessionId || activeSession?.status === "stopped";
     if (!isNewSession) {
@@ -287,6 +291,7 @@ export function AgentChatPanel() {
     setError(null);
     resetSteps();
     resetLiveStream();
+    setMobileShowChat(true);
   }
 
   async function handleSelectSession(sessionId: string) {
@@ -295,6 +300,7 @@ export function AgentChatPanel() {
     resetLiveStream();
     try {
       await loadSession(sessionId);
+      setMobileShowChat(true);
     } catch (loadError) {
       setError(
         loadError instanceof Error ? loadError.message : "Could not load session"
@@ -329,24 +335,29 @@ export function AgentChatPanel() {
     (liveActivity.length > 0 || streamingText || liveThinking || runningStep);
 
   return (
-    <div className="grid min-h-[70vh] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-      <aside className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div
+      className={cn(
+        "agent-chat grid min-h-0 flex-1 gap-0 lg:grid-cols-[280px_minmax(0,1fr)]",
+        mobileShowChat && "agent-chat--detail-open"
+      )}
+    >
+      <aside className="agent-chat__sidebar border-b border-[var(--border)] bg-[var(--surface-muted)] p-4 lg:border-r lg:border-b-0">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+          <p className="text-sm font-medium text-[var(--text-primary)]">
             Conversations
           </p>
           <button
             type="button"
             onClick={startNewChat}
-            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500"
+            className="workspace-btn-primary rounded-full px-3 py-1.5 text-xs font-medium transition"
           >
             New chat
           </button>
         </div>
 
-        <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
+        <div className="flex max-h-none flex-col gap-2 overflow-y-auto lg:max-h-[60vh]">
           {sessions.length === 0 ? (
-            <p className="text-sm text-zinc-500">No conversations yet.</p>
+            <p className="text-sm text-[var(--text-tertiary)]">No conversations yet.</p>
           ) : (
             sessions.map((session) => (
               <button
@@ -355,14 +366,14 @@ export function AgentChatPanel() {
                 onClick={() => void handleSelectSession(session.id)}
                 className={`rounded-xl border px-3 py-3 text-left transition ${
                   session.id === activeSessionId
-                    ? "border-violet-500/40 bg-violet-500/10"
-                    : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                    ? "border-[var(--border-strong)] bg-[var(--surface-elevated)] shadow-sm"
+                    : "border-[var(--border)] hover:bg-[var(--surface-elevated)]"
                 }`}
               >
-                <p className="line-clamp-2 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                <p className="line-clamp-2 text-sm font-medium text-[var(--text-primary)]">
                   {session.title}
                 </p>
-                <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+                <div className="mt-2 flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
                   <span>{session.messageCount} messages</span>
                   <span>•</span>
                   <span>{session.status}</span>
@@ -373,23 +384,30 @@ export function AgentChatPanel() {
         </div>
       </aside>
 
-      <section className="flex min-h-[70vh] flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-          <div>
-            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-              {activeSession ? activeSession.title : "New conversation"}
-            </p>
-            <p className="text-xs text-zinc-500">
-              {activeSession
-                ? `Sandbox ${activeSession.sandboxName}`
-                : "Start a fresh Claude Code session"}
-            </p>
+      <section className="agent-chat__main flex min-h-0 flex-col bg-[var(--surface)]">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileBackButton
+              onClick={() => setMobileShowChat(false)}
+              label="All conversations"
+              visibleBelow="lg"
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+                {activeSession ? activeSession.title : "New conversation"}
+              </p>
+              <p className="truncate text-xs text-[var(--text-tertiary)]">
+                {activeSession
+                  ? `Sandbox ${activeSession.sandboxName}`
+                  : "Start a fresh Claude Code session"}
+              </p>
+            </div>
           </div>
           {activeSession?.status === "active" ? (
             <button
               type="button"
               onClick={() => void handleStopSession()}
-              className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              className="workspace-btn-ghost rounded-full px-3 py-1.5 text-xs font-medium transition"
             >
               Stop sandbox
             </button>
@@ -398,7 +416,7 @@ export function AgentChatPanel() {
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           {messages.length === 0 && !showLiveStream ? (
-            <div className="rounded-xl border border-dashed border-zinc-200 p-6 text-sm text-zinc-500 dark:border-zinc-800">
+            <div className="rounded-xl border border-dashed border-[var(--border)] p-6 text-sm text-[var(--text-secondary)]">
               Send a message to start a new conversation, or select a previous
               chat from the sidebar to resume it.
             </div>
@@ -416,10 +434,10 @@ export function AgentChatPanel() {
                   />
                 ) : null}
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap ${
+                  className={`max-w-[85%] rounded-3xl px-4 py-3 text-sm leading-6 whitespace-pre-wrap ${
                     message.role === "user"
-                      ? "bg-violet-600 text-white"
-                      : "bg-zinc-100 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100"
+                      ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                      : "text-[var(--text-primary)]"
                   }`}
                 >
                   {message.content}
@@ -458,26 +476,22 @@ export function AgentChatPanel() {
 
         <form
           onSubmit={(event) => void handleSubmit(event)}
-          className="border-t border-zinc-200 p-5 dark:border-zinc-800"
+          className="border-t border-[var(--border)] p-4 sm:p-5"
+          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
         >
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            rows={3}
-            placeholder={
-              activeSession?.status === "stopped"
-                ? "This session is stopped. Start a new chat to continue."
-                : "Message Claude Code…"
-            }
-            disabled={isRunning || activeSession?.status === "stopped"}
-            className="w-full rounded-xl border border-zinc-200 bg-zinc-950 p-4 text-sm leading-6 text-zinc-100 outline-none ring-violet-500 focus:ring-2 disabled:opacity-60 dark:border-zinc-800"
-          />
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <p className="text-xs text-zinc-500">
-              {activeSession?.status === "active"
-                ? "Follow-up messages resume the same sandbox and Claude session."
-                : "First message creates a persistent sandbox."}
-            </p>
+          <div className="workspace-shadow-input relative rounded-3xl border border-[var(--border)] bg-[var(--surface-elevated)]">
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              rows={2}
+              placeholder={
+                activeSession?.status === "stopped"
+                  ? "This session is stopped. Start a new chat to continue."
+                  : "Message Claude Code…"
+              }
+              disabled={isRunning || activeSession?.status === "stopped"}
+              className="w-full resize-none bg-transparent px-4 py-3 pr-14 text-sm leading-6 text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none disabled:opacity-60"
+            />
             <button
               type="submit"
               disabled={
@@ -485,11 +499,19 @@ export function AgentChatPanel() {
                 !draft.trim() ||
                 activeSession?.status === "stopped"
               }
-              className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className="workspace-btn-primary absolute right-2 bottom-2 flex h-8 w-8 items-center justify-center rounded-full transition disabled:opacity-40"
+              aria-label="Send message"
             >
-              {isRunning ? "Sending…" : "Send"}
+              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
+                <path d="M8.5 4.5 14 10l-5.5 5.5-.7-.7 4.8-4.8H4V9.3h9.1L7.8 4.5l.7-.8Z" />
+              </svg>
             </button>
           </div>
+          <p className="mt-3 text-xs text-[var(--text-tertiary)]">
+            {activeSession?.status === "active"
+              ? "Follow-up messages resume the same sandbox and Claude session."
+              : "First message creates a persistent sandbox."}
+          </p>
         </form>
       </section>
     </div>

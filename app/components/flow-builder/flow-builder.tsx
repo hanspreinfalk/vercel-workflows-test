@@ -10,112 +10,50 @@ import {
   useNodesState,
   type Connection,
   type Edge,
-  type Node,
+  BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./flow-builder.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AddNodeMenu } from "./add-node-menu";
-import { ClaudeCodeFlowNode } from "./claude-code-node";
-import { ManualTriggerFlowNode } from "./manual-trigger-node";
-import { StopFlowNode } from "./stop-node";
-import { OpenCodeFlowNode } from "./open-code-node";
-import { NodeInspector } from "./node-inspector";
-import { FlowBuilderChatPanel } from "./flow-builder-chat-panel";
-import { FlowRunLogsPanel } from "./flow-run-logs-panel";
-import { useFlowRunStream } from "./use-flow-run-stream";
-import { getDefaultAgentLabel } from "@/lib/agent-node-utils";
-import { hasManualTrigger } from "@/lib/flow-graph";
-import { normalizeFlowNodes } from "@/lib/agent-skills";
-import type { FlowDefinition, FlowEdge, FlowNode } from "@/lib/flow-types";
+import { AddNodeMenu } from "./toolbar/add-node-menu";
+import { WorkspaceShell } from "@/app/components/workspace/shell/workspace-shell";
+import type { WorkflowSummary } from "@/app/components/workspace/shell/workflow-selector";
+import { NodeInspector } from "./panels/node-inspector";
+import { FlowBuilderChatPanel } from "./panels/flow-builder-chat-panel";
+import { FlowBuilderCredentialsPanel } from "./panels/flow-builder-credentials-panel";
+import { FlowRunLogsPanel } from "./panels/flow-run-logs-panel";
+import { useFlowRunStream } from "./runs/use-flow-run-stream";
+import {
+  DEFAULT_EDGE_OPTIONS,
+  FIT_VIEW_OPTIONS,
+  fromReactFlowEdges,
+  fromReactFlowNodes,
+  toReactFlowEdges,
+  toReactFlowNodes,
+} from "./canvas/flow-adapters";
+import { flowNodeTypes } from "./canvas/node-types";
+import { getDefaultAgentLabel } from "@/lib/agent/node-utils";
+import { canRunFlow, getMissingFlowRequirements } from "@/lib/flow/credentials";
+import { hasManualTrigger } from "@/lib/flow/graph";
+import { normalizeFlowNodes } from "@/lib/agent/skills";
+import type { FlowDefinition, FlowEdge, FlowNode } from "@/lib/flow/types";
 import {
   createDefaultClaudeNode,
   createDefaultOpenCodeNode,
   createManualTriggerNode,
   createStopNode,
-} from "@/lib/flow-types";
-
-const nodeTypes = {
-  "claude-code": ClaudeCodeFlowNode,
-  "open-code": OpenCodeFlowNode,
-  "manual-trigger": ManualTriggerFlowNode,
-  stop: StopFlowNode,
-};
-
-const FIT_VIEW_OPTIONS = {
-  padding: 0.4,
-  maxZoom: 0.85,
-};
-
-function toReactFlowNodes(nodes: FlowNode[]): Node[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    type: node.type,
-    position: node.position,
-    data: node.data,
-  }));
-}
-
-function toReactFlowEdges(edges: FlowEdge[]): Edge[] {
-  return edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-  }));
-}
-
-function fromReactFlowNodes(nodes: Node[]): FlowNode[] {
-  return nodes.map((node) => {
-    if (node.type === "manual-trigger") {
-      return {
-        id: node.id,
-        type: "manual-trigger",
-        position: node.position,
-        data: node.data as Extract<FlowNode, { type: "manual-trigger" }>["data"],
-      };
-    }
-
-    if (node.type === "stop") {
-      return {
-        id: node.id,
-        type: "stop",
-        position: node.position,
-        data: node.data as Extract<FlowNode, { type: "stop" }>["data"],
-      };
-    }
-
-    if (node.type === "open-code") {
-      return {
-        id: node.id,
-        type: "open-code",
-        position: node.position,
-        data: node.data as Extract<FlowNode, { type: "open-code" }>["data"],
-      };
-    }
-
-    return {
-      id: node.id,
-      type: "claude-code",
-      position: node.position,
-      data: node.data as Extract<FlowNode, { type: "claude-code" }>["data"],
-    };
-  });
-}
-
-function fromReactFlowEdges(edges: Edge[]): FlowEdge[] {
-  return edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-  }));
-}
+} from "@/lib/flow/types";
 
 type FlowBuilderProps = {
   initialFlow: FlowDefinition;
+  flows: WorkflowSummary[];
 };
 
-export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
+export function FlowBuilder({
+  initialFlow,
+  flows,
+}: FlowBuilderProps) {
   const normalizedFlow = useMemo(
     () => ({
       ...initialFlow,
@@ -139,16 +77,26 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [chatOpen, setChatOpen] = useState(true);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [canvasOpen, setCanvasOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
+  const [bootstrapMessage, setBootstrapMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const key = `flow-bootstrap-${initialFlow.id}`;
+    const message = sessionStorage.getItem(key);
+    if (message) {
+      sessionStorage.removeItem(key);
+      setBootstrapMessage(message);
+    }
+  }, [initialFlow.id]);
 
   const mainGridClass = useMemo(() => {
-    if (chatOpen && inspectorOpen) return "lg:grid-cols-[320px_1fr_340px]";
-    if (chatOpen) return "lg:grid-cols-[320px_1fr]";
-    if (inspectorOpen) return "lg:grid-cols-[1fr_340px]";
-    return "lg:grid-cols-[1fr]";
-  }, [chatOpen, inspectorOpen]);
+    if (canvasOpen && inspectorOpen) return "flow-builder-grid--split-inspector";
+    if (canvasOpen) return "flow-builder-grid--split";
+    return "flow-builder-grid--chat-full";
+  }, [canvasOpen, inspectorOpen]);
 
   const { nodeStates, activeNodeId, runStatus, error: runError, events, results } =
     useFlowRunStream(activeRunId);
@@ -178,6 +126,12 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
   );
 
   const flowNodes = useMemo(() => fromReactFlowNodes(nodes), [nodes]);
+
+  const runReady = useMemo(() => canRunFlow(flowNodes), [flowNodes]);
+  const missingRequirements = useMemo(
+    () => getMissingFlowRequirements(flowNodes),
+    [flowNodes]
+  );
 
   const selectedNode = useMemo(
     () => flowNodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -226,6 +180,15 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
       if (!hasManualTrigger(payload.nodes)) {
         const message = "Add a Start node to run the flow.";
         setError(message);
+        setIsRunning(false);
+        return { ok: false as const, error: message };
+      }
+
+      if (!canRunFlow(payload.nodes)) {
+        const message =
+          "Add skills, scripts, prompts, and credentials for every agent before running.";
+        setError(message);
+        setCredentialsOpen(true);
         setIsRunning(false);
         return { ok: false as const, error: message };
       }
@@ -324,9 +287,12 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
     [setEdges]
   );
 
-  function selectNode(nodeId: string) {
+  function selectNode(nodeId: string, options?: { openCanvas?: boolean }) {
     setSelectedNodeId(nodeId);
     setInspectorOpen(true);
+    if (options?.openCanvas) {
+      setCanvasOpen(true);
+    }
   }
 
   function addAgentNode(type: "claude-code" | "open-code") {
@@ -366,6 +332,14 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
     const newNode = createManualTriggerNode(id, { x: 40, y: 140 });
     setNodes((current) => [toReactFlowNodes([newNode])[0], ...current]);
     selectNode(id);
+  }
+
+  function updateAgentNode(node: FlowNode) {
+    setNodes((current) =>
+      current.map((item) =>
+        item.id === node.id ? toReactFlowNodes([node])[0] : item
+      )
+    );
   }
 
   function updateSelectedNode(node: FlowNode) {
@@ -428,94 +402,159 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
             ? "Failed"
             : null;
 
-  return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <input
-            value={flowName}
-            onChange={(event) => setFlowName(event.target.value)}
-            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium dark:border-zinc-800 dark:bg-zinc-950"
-          />
-          {savedAt ? (
-            <span className="text-xs text-zinc-500">Saved</span>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <AddNodeMenu
-            onAddManualTrigger={addManualTriggerNode}
-            onAddClaudeCode={() => addAgentNode("claude-code")}
-            onAddOpenCode={() => addAgentNode("open-code")}
-            onAddStopNode={addStopNode}
-            onStopWorkflow={() => void handleStopRunFromToolbar()}
-            hasManualTrigger={flowNodes.some(
-              (node) => node.type === "manual-trigger"
-            )}
-            canStopWorkflow={isRunning && Boolean(activeRunId)}
-            isStopping={isStopping}
-          />
-          <button
-            type="button"
-            onClick={() => void saveFlow()}
-            disabled={isSaving}
-            className="rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
-          >
-            {isSaving ? "Saving…" : "Save"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleRun()}
-            disabled={isRunning || nodes.length === 0}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-60"
-          >
-            {isRunning ? "Running…" : "Run"}
-          </button>
-          {isRunning ? (
-            <button
-              type="button"
-              onClick={() => void handleStopRunFromToolbar()}
-              disabled={isStopping}
-              className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-500/15 disabled:opacity-60 dark:text-red-300"
-            >
-              {isStopping ? "Stopping…" : "Stop"}
-            </button>
-          ) : null}
-          {activeRunId ? (
-            <Link
-              href={`/builder/runs/${activeRunId}`}
-              className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-            >
-              View run details
-            </Link>
-          ) : null}
-        </div>
+  const toolbar = (
+    <>
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+        <input
+          value={flowName}
+          onChange={(event) => setFlowName(event.target.value)}
+          className="workspace-input min-w-0 max-w-full flex-1 rounded-lg px-3 py-1.5 text-sm font-medium sm:max-w-xs"
+          aria-label="Workflow name"
+        />
+        {savedAt ? (
+          <span className="hidden shrink-0 text-xs text-[var(--text-tertiary)] sm:inline">
+            Saved
+          </span>
+        ) : null}
       </div>
-
-      {runStatusLabel ? (
-        <div
-          className={`border-b px-4 py-2 text-sm ${
-            runStatus === "completed"
-              ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-800 dark:text-emerald-200"
-              : runStatus === "cancelled"
-                ? "border-amber-500/20 bg-amber-500/5 text-amber-800 dark:text-amber-200"
-              : runStatus === "failed"
-                ? "border-red-500/20 bg-red-500/5 text-red-700 dark:text-red-300"
-                : "border-blue-500/20 bg-blue-500/5 text-blue-800 dark:text-blue-200"
-          }`}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        <AddNodeMenu
+          onAddManualTrigger={addManualTriggerNode}
+          onAddClaudeCode={() => addAgentNode("claude-code")}
+          onAddOpenCode={() => addAgentNode("open-code")}
+          onAddStopNode={addStopNode}
+          onStopWorkflow={() => void handleStopRunFromToolbar()}
+          hasManualTrigger={flowNodes.some(
+            (node) => node.type === "manual-trigger"
+          )}
+          canStopWorkflow={isRunning && Boolean(activeRunId)}
+          isStopping={isStopping}
+        />
+        <button
+          type="button"
+          onClick={() => void saveFlow()}
+          disabled={isSaving}
+          className="workspace-btn-ghost rounded-lg px-3.5 py-1.5 text-sm font-medium transition disabled:opacity-60"
         >
-          Flow {runStatusLabel.toLowerCase()}
-          {runError ? `: ${runError}` : null}
-        </div>
-      ) : null}
+          {isSaving ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleRun()}
+          disabled={isRunning || nodes.length === 0 || !runReady}
+          title={
+            !runReady
+              ? `${missingRequirements.length} requirement(s) missing — open Credentials`
+              : undefined
+          }
+          className="workspace-btn-primary rounded-lg px-4 py-1.5 text-sm font-medium transition disabled:opacity-60"
+        >
+          {isRunning ? "Running…" : "Run"}
+        </button>
+        {isRunning ? (
+          <button
+            type="button"
+            onClick={() => void handleStopRunFromToolbar()}
+            disabled={isStopping}
+            className="rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-1.5 text-sm font-medium text-red-400 transition hover:bg-red-500/15 disabled:opacity-60"
+          >
+            {isStopping ? "Stopping…" : "Stop"}
+          </button>
+        ) : null}
+        {activeRunId ? (
+          <Link
+            href={`/builder/runs/${activeRunId}`}
+            className="workspace-btn-ghost rounded-lg px-3.5 py-1.5 text-sm transition"
+          >
+            Run details
+          </Link>
+        ) : null}
+      </div>
+    </>
+  );
+
+  const isRunActive =
+    runStatus === "connecting" || runStatus === "running";
+
+  return (
+    <WorkspaceShell
+      flows={flows}
+      currentFlowId={initialFlow.id}
+      activeTab="workflows"
+      toolbar={toolbar}
+    >
+    <div className="flow-builder-shell flex h-full min-h-0 flex-col">
 
       {error ? (
-        <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-sm text-red-700 dark:text-red-300">
+        <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-sm text-red-400">
           {error}
         </div>
       ) : null}
 
-      <div className={`grid min-h-0 flex-1 ${mainGridClass}`}>
-        {chatOpen ? (
+      <div className={`flow-builder-grid ${mainGridClass}`}>
+        <div className="flow-builder-chat-column">
+          <div className="flow-builder-chat-toolbar">
+            <div className="flow-builder-chat-toolbar__left">
+              <button
+                type="button"
+                onClick={() => setCanvasOpen((open) => !open)}
+                className={`flow-panel-toggle ${canvasOpen ? "flow-panel-toggle--active" : ""}`}
+                aria-pressed={canvasOpen}
+              >
+                <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor">
+                  <path d="M3 4.75A1.75 1.75 0 0 1 4.75 3h10.5A1.75 1.75 0 0 1 17 4.75v10.5A1.75 1.75 0 0 1 15.25 17H4.75A1.75 1.75 0 0 1 3 15.25V4.75Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V4.75a.25.25 0 0 0-.25-.25H4.75Z" />
+                </svg>
+                Workflow view
+              </button>
+              <button
+                type="button"
+                onClick={() => setCredentialsOpen((open) => !open)}
+                className={`flow-panel-toggle ${credentialsOpen ? "flow-panel-toggle--active" : ""} ${!runReady ? "text-[var(--brand)]" : ""}`}
+                aria-pressed={credentialsOpen}
+              >
+                <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor">
+                  <path d="M10 2a4 4 0 0 0-2 1.5v1.7a3 3 0 0 0-1 .8l-1.5 1.5a1 1 0 0 0 0 1.4l1.5 1.5a3 3 0 0 0 1 .8V16A4 4 0 1 0 10 2Zm0 11.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z" />
+                </svg>
+                Credentials
+                {!runReady ? (
+                  <span className="rounded-full bg-[var(--brand)]/15 px-1.5 py-0.5 text-[10px] text-[var(--brand)]">
+                    {missingRequirements.length}
+                  </span>
+                ) : null}
+              </button>
+              {canvasOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setInspectorOpen((open) => !open)}
+                  className={`flow-panel-toggle ${inspectorOpen ? "flow-panel-toggle--active" : ""}`}
+                  aria-pressed={inspectorOpen}
+                >
+                  <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor">
+                    <path d="M4 4.75A1.75 1.75 0 0 1 5.75 3h8.5A1.75 1.75 0 0 1 16 4.75v10.5A1.75 1.75 0 0 1 14.25 17h-8.5A1.75 1.75 0 0 1 4 15.25V4.75Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25V4.75a.25.25 0 0 0-.25-.25h-8.5Z" />
+                  </svg>
+                  Inspector
+                </button>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {runStatusLabel ? (
+                <span
+                  className={`flow-run-pill ${isRunActive ? "flow-run-pill--running" : ""}`}
+                >
+                  <span className="flow-run-pill__dot" />
+                  {runStatusLabel}
+                  {runError ? ` — ${runError}` : null}
+                </span>
+              ) : null}
+              {canvasOpen ? (
+                <span className="hidden text-xs text-[var(--text-tertiary)] sm:inline">
+                  {nodes.length} node{nodes.length === 1 ? "" : "s"}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
           <FlowBuilderChatPanel
             flowId={initialFlow.id}
             flowName={flowName}
@@ -525,6 +564,7 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
             activeRunId={activeRunId}
             runStatus={runStatus}
             isRunning={isRunning}
+            bootstrapMessage={bootstrapMessage}
             lastRun={
               activeRunId
                 ? {
@@ -540,48 +580,55 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
             onApplyFlow={applyFlowFromChat}
             onRunFlow={(payload) => handleRun(payload)}
             onStopFlow={handleStopRun}
-            onClose={() => setChatOpen(false)}
+            fullWidth
           />
-        ) : null}
 
-        <div className="relative flex min-h-0 flex-col">
-          {!chatOpen ? (
-            <button
-              type="button"
-              onClick={() => setChatOpen(true)}
-              className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-r-lg border border-l-0 border-zinc-200 bg-white px-2 py-3 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
-              aria-label="Open flow assistant chat"
-            >
-              Chat
-            </button>
+          {credentialsOpen ? (
+            <FlowBuilderCredentialsPanel
+              className="flow-credentials-panel--inline"
+              nodes={flowNodes}
+              onUpdateNode={updateAgentNode}
+              onSelectNode={(nodeId) => {
+                selectNode(nodeId, { openCanvas: true });
+              }}
+            />
           ) : null}
+        </div>
 
-          {!inspectorOpen ? (
-            <button
-              type="button"
-              onClick={() => setInspectorOpen(true)}
-              className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-l-lg border border-r-0 border-zinc-200 bg-white px-2 py-3 text-xs font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
-              aria-label="Open node inspector"
-            >
-              Inspector
-            </button>
-          ) : null}
+        {canvasOpen ? (
+        <div className="flow-canvas-wrap">
+          <div className="flow-builder-canvas relative min-h-0 flex-1">
+            {nodes.length === 0 ? (
+              <div className="flow-canvas-empty">
+                <p className="flow-canvas-empty__title">Empty workflow</p>
+                <p className="flow-canvas-empty__hint">
+                  Add a Start node from the toolbar, or ask the assistant to
+                  build one for you.
+                </p>
+              </div>
+            ) : null}
 
-          <div className="flow-builder-canvas min-h-0 flex-1">
             <ReactFlow
               nodes={displayNodes}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
-              nodeTypes={nodeTypes}
+              nodeTypes={flowNodeTypes}
+              defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
               onNodeClick={(_, node) => selectNode(node.id)}
               fitView
               fitViewOptions={FIT_VIEW_OPTIONS}
+              proOptions={{ hideAttribution: true }}
             >
-              <Background />
-              <MiniMap />
-              <Controls showInteractive={false} />
+              <Background
+                variant={BackgroundVariant.Dots}
+                gap={20}
+                size={1}
+                color="#27272a"
+              />
+              <MiniMap pannable zoomable />
+              <Controls showInteractive={false} position="bottom-left" />
             </ReactFlow>
           </div>
 
@@ -594,8 +641,9 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
             />
           ) : null}
         </div>
+        ) : null}
 
-        {inspectorOpen ? (
+        {canvasOpen && inspectorOpen ? (
           <NodeInspector
             node={selectedNode}
             onChange={updateSelectedNode}
@@ -605,5 +653,6 @@ export function FlowBuilder({ initialFlow }: FlowBuilderProps) {
         ) : null}
       </div>
     </div>
+    </WorkspaceShell>
   );
 }

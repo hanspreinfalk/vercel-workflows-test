@@ -1,5 +1,4 @@
-import { SiteHeader } from "@/app/components/site-header";
-import { FlowRunViewer } from "@/app/components/flow-builder/flow-run-viewer";
+import { FlowRunViewer } from "@/app/components/flow-builder/runs/flow-run-viewer";
 
 export default async function BuilderRunPage({
   params,
@@ -8,10 +7,5 @@ export default async function BuilderRunPage({
 }) {
   const { runId } = await params;
 
-  return (
-    <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-black">
-      <SiteHeader active="builder" />
-      <FlowRunViewer runId={runId} />
-    </div>
-  );
+  return <FlowRunViewer runId={runId} />;
 }

@@ -1,4 +1,4 @@
-import { createFlow, listFlows } from "@/lib/flow-store";
+import { createFlow, listFlows } from "@/lib/flow/store";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";

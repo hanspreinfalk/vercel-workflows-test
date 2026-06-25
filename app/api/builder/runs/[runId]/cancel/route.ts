@@ -1,4 +1,4 @@
-import { cancelFlowRun } from "@/lib/flow-run-cancel";
+import { cancelFlowRun } from "@/lib/flow/run-cancel";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";

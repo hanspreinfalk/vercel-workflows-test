@@ -44,7 +44,7 @@ export function SignupForm() {
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
       <label className="flex flex-col gap-2 text-left">
-        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <span className="text-sm font-medium text-[var(--text-secondary)]">
           Email address
         </span>
         <input
@@ -53,20 +53,20 @@ export function SignupForm() {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="you@example.com"
-          className="h-12 rounded-xl border border-zinc-200 bg-white px-4 text-zinc-950 outline-none ring-blue-500 transition focus:ring-2 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+          className="workspace-input h-12 px-4"
         />
       </label>
 
       <button
         type="submit"
         disabled={isSubmitting}
-        className="flex h-12 items-center justify-center rounded-xl bg-zinc-950 px-5 font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-300"
+        className="workspace-btn-primary flex h-12 items-center justify-center rounded-full px-5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isSubmitting ? "Starting workflow…" : "Start signup workflow"}
       </button>
 
       {error ? (
-        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p className="text-sm text-[var(--destructive)]">{error}</p>
       ) : null}
     </form>
   );

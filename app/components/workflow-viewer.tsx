@@ -9,7 +9,7 @@ import {
   type WorkflowProgressEvent,
   type WorkflowStepId,
   type WorkflowStepStatus,
-} from "@/lib/workflow-progress";
+} from "@/lib/legacy/workflow-progress";
 
 type StepState = {
   status: WorkflowStepStatus | "completed";

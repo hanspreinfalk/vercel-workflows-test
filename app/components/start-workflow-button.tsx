@@ -55,12 +55,12 @@ export function StartWorkflowButton({
         type="button"
         onClick={() => void handleClick()}
         disabled={isStarting}
-        className={`inline-flex h-10 items-center justify-center rounded-xl bg-zinc-950 px-4 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-300 ${className}`}
+        className={`workspace-btn-primary inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
         {isStarting ? "Starting…" : label}
       </button>
       {error ? (
-        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p className="text-sm text-[var(--destructive)]">{error}</p>
       ) : null}
     </div>
   );

@@ -1,4 +1,4 @@
-import { SiteHeader } from "@/app/components/site-header";
+import { PageContainer } from "@/app/components/shell/site-header";
 import { WorkflowViewer } from "@/app/components/workflow-viewer";
 
 export default async function WorkflowPage({
@@ -9,9 +9,10 @@ export default async function WorkflowPage({
   const { runId } = await params;
 
   return (
-    <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-black">
-      <SiteHeader active="workflow" />
-      <WorkflowViewer runId={runId} />
-    </div>
+    <PageContainer>
+      <div className="app-card overflow-hidden p-6 sm:p-8">
+        <WorkflowViewer runId={runId} />
+      </div>
+    </PageContainer>
   );
 }

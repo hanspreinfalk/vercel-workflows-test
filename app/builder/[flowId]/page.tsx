@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
-import { SiteHeader } from "@/app/components/site-header";
-import { FlowBuilder } from "@/app/components/flow-builder/flow-builder";
-import { getFlow } from "@/lib/flow-store";
+import { FlowBuilder } from "@/app/components/flow-builder";
+import { listFlows } from "@/lib/flow/store";
+import { getWorkspaceShellProps } from "@/lib/workspace/server";
 
 export const dynamic = "force-dynamic";
 
@@ -11,16 +11,17 @@ export default async function BuilderFlowPage({
   params: Promise<{ flowId: string }>;
 }) {
   const { flowId } = await params;
-  const flow = getFlow(flowId);
+  const shellProps = getWorkspaceShellProps();
+  const flow = listFlows().find((item) => item.id === flowId);
 
   if (!flow) {
     notFound();
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-black">
-      <SiteHeader active="builder" />
-      <FlowBuilder initialFlow={flow} />
-    </div>
+    <FlowBuilder
+      initialFlow={flow}
+      flows={shellProps.flows}
+    />
   );
 }

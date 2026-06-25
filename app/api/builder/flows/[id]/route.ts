@@ -1,5 +1,5 @@
-import { deleteFlow, getFlow, saveFlow } from "@/lib/flow-store";
-import type { FlowEdge, FlowNode } from "@/lib/flow-types";
+import { deleteFlow, getFlow, saveFlow } from "@/lib/flow/store";
+import type { FlowEdge, FlowNode } from "@/lib/flow/types";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";

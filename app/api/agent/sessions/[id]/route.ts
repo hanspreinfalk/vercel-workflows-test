@@ -1,6 +1,6 @@
-import { getAgentSession } from "@/lib/agent-session-store";
-import { stopAgentSession } from "@/lib/agent-chat";
-import { toSessionSummary } from "@/lib/claude-agent";
+import { getAgentSession } from "@/lib/agent/session-store";
+import { stopAgentSession } from "@/lib/agent/chat";
+import { toSessionSummary } from "@/lib/agent/claude-agent";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";

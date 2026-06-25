@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AppShell } from "@/app/components/shell/app-shell";
+import { ThemeProvider } from "@/app/components/shell/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { getWorkspaceShellProps } from "@/lib/workspace/server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vercel Workflows & Sandbox Demo",
-  description: "Durable workflows and isolated code execution on Vercel",
+  title: "Workflows",
+  description: "Design, run, and refine agent workflows",
 };
 
 export default function RootLayout({
@@ -22,14 +26,25 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { organizations, defaultOrgId } = getWorkspaceShellProps();
+
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        {children}
+      <body className="app-shell h-full overflow-hidden" suppressHydrationWarning>
+        <ThemeProvider>
+          <TooltipProvider>
+            <AppShell
+              organizations={organizations}
+              defaultOrgId={defaultOrgId}
+            >
+              {children}
+            </AppShell>
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
