@@ -43,7 +43,7 @@ export function FeatureCards() {
           <Link
             key={feature.href}
             href={feature.href}
-            className="chatzy-card chatzy-card--flat group block p-6"
+            className="group block rounded-xl border border-border bg-card p-6 transition hover:border-[color-mix(in_oklab,var(--brand)_18%,var(--border))] hover:bg-[var(--surface-elevated)] hover:shadow-[var(--shadow-soft)]"
           >
             <h3 className="text-base font-medium text-foreground">
               {feature.title}

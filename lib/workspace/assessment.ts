@@ -1,6 +1,16 @@
-import { getInterviewVisualMetrics, getOrgInterviewStats } from "@/lib/workspace/interview-analytics";
-import { getOrgRecordingStats, getRecordingVisualMetrics } from "@/lib/workspace/recording-analytics";
-import { listInterviews, listParticipants, listRecordings } from "@/lib/workspace/org-store";
+import {
+  getInterviewVisualMetrics,
+  getOrgInterviewStats,
+} from "@/lib/workspace/interview-analytics";
+import {
+  getOrgRecordingStats,
+  getRecordingVisualMetrics,
+} from "@/lib/workspace/recording-analytics";
+import {
+  listInterviews,
+  listParticipants,
+  listRecordings,
+} from "@/lib/workspace/org-store";
 import type { Interview, Participant } from "@/lib/workspace/types";
 
 export type Bottleneck = {
@@ -32,11 +42,54 @@ export type AutomationIdea = {
   linkedInterviewIds: string[];
 };
 
+export type ParticipantReport = {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  interviewCount: number;
+  recordingCount: number;
+  automationPotential: number;
+  topThemes: string[];
+  keyFinding: string;
+};
+
+export type InterviewReport = {
+  id: string;
+  title: string;
+  participantName: string;
+  status: Interview["status"];
+  summary: string;
+  themes: string[];
+  durationMin: number;
+  automationScore: number;
+  topPain: string;
+  recordingId?: string;
+};
+
+export type RecordingReport = {
+  id: string;
+  title: string;
+  participantName: string;
+  summary: string;
+  durationSec: number;
+  contextSwitchRate: number;
+  totalEvents: number;
+  eventsPerMinute: number;
+  topApp: string | null;
+};
+
 export type OrgAssessment = {
   orgId: string;
+  orgName: string;
   generatedAt: number;
   overallScore: number;
   summary: string;
+  keyFindings: string[];
+  totalRecoverableMinutes: number;
+  participants: ParticipantReport[];
+  interviews: InterviewReport[];
+  recordings: RecordingReport[];
   radar: Array<{ dimension: string; score: number; fullMark: number }>;
   bottlenecks: Bottleneck[];
   inefficiencies: Inefficiency[];
@@ -44,10 +97,115 @@ export type OrgAssessment = {
   timeByCategory: Array<{ category: string; hours: number }>;
   maturityProgress: Array<{ area: string; current: number; target: number }>;
   participantScores: Array<{ name: string; automationPotential: number }>;
+  interviewStats: ReturnType<typeof getOrgInterviewStats>;
+  recordingStats: ReturnType<typeof getOrgRecordingStats>;
 };
 
 function participantName(participants: Participant[], id: string): string {
   return participants.find((p) => p.id === id)?.name ?? "Unknown";
+}
+
+function topPainFromInterview(interview: Interview): string {
+  const metrics = getInterviewVisualMetrics(interview);
+  const pains = [
+    { label: "Manual work", score: metrics.painRadar.manualWork },
+    { label: "Handoffs", score: metrics.painRadar.handoffs },
+    { label: "Data entry", score: metrics.painRadar.dataEntry },
+    { label: "Waiting", score: metrics.painRadar.waiting },
+    { label: "Duplication", score: metrics.painRadar.duplication },
+  ];
+  return pains.sort((a, b) => b.score - a.score)[0]?.label ?? "Process friction";
+}
+
+function buildParticipantReports(
+  orgId: string,
+  participants: Participant[],
+  interviews: Interview[]
+): ParticipantReport[] {
+  return participants
+    .filter((p) => p.orgId === orgId)
+    .map((participant) => {
+      const pInterviews = interviews.filter((i) => i.participantId === participant.id);
+      const themes = new Map<string, number>();
+      for (const interview of pInterviews) {
+        for (const theme of interview.themes ?? []) {
+          themes.set(theme, (themes.get(theme) ?? 0) + 1);
+        }
+      }
+
+      const automationPotential =
+        pInterviews.length === 0
+          ? 40
+          : Math.round(
+              pInterviews.reduce(
+                (sum, i) => sum + getInterviewVisualMetrics(i).automationScore,
+                0
+              ) / pInterviews.length
+            );
+
+      const completed = pInterviews.find(
+        (i) => i.status === "completed" || i.status === "analyzing"
+      );
+
+      return {
+        id: participant.id,
+        name: participant.name,
+        role: participant.role,
+        email: participant.email,
+        interviewCount: participant.interviewCount,
+        recordingCount: participant.recordingCount,
+        automationPotential,
+        topThemes: [...themes.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(([theme]) => theme),
+        keyFinding:
+          completed?.summary ??
+          "Scheduled for discovery — baseline automation potential estimated from org patterns.",
+      };
+    });
+}
+
+function buildInterviewReports(
+  interviews: Interview[],
+  participants: Participant[]
+): InterviewReport[] {
+  return [...interviews]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((interview) => ({
+      id: interview.id,
+      title: interview.title,
+      participantName: participantName(participants, interview.participantId),
+      status: interview.status,
+      summary: interview.summary,
+      themes: interview.themes ?? [],
+      durationMin: interview.durationMin,
+      automationScore: getInterviewVisualMetrics(interview).automationScore,
+      topPain: topPainFromInterview(interview),
+      recordingId: interview.recordingId,
+    }));
+}
+
+function buildRecordingReports(
+  recordings: ReturnType<typeof listRecordings>,
+  participants: Participant[]
+): RecordingReport[] {
+  return [...recordings]
+    .sort((a, b) => b.capturedAt - a.capturedAt)
+    .map((recording) => {
+      const metrics = getRecordingVisualMetrics(recording);
+      return {
+        id: recording.id,
+        title: recording.title,
+        participantName: participantName(participants, recording.participantId),
+        summary: recording.summary,
+        durationSec: recording.durationSec,
+        contextSwitchRate: metrics.contextSwitchRate,
+        totalEvents: metrics.totalEvents,
+        eventsPerMinute: metrics.eventsPerMinute,
+        topApp: metrics.appUsage[0]?.app ?? null,
+      };
+    });
 }
 
 function buildBottlenecks(
@@ -165,12 +323,16 @@ function buildAutomationIdeas(interviews: Interview[]): AutomationIdea[] {
   return ideas.sort((a, b) => b.roiScore - a.roiScore);
 }
 
-export function buildOrgAssessment(orgId: string): OrgAssessment {
+export function buildOrgAssessment(orgId: string, orgName = "Organization"): OrgAssessment {
   const interviews = listInterviews(orgId);
   const recordings = listRecordings(orgId);
   const participants = listParticipants(orgId);
   const interviewStats = getOrgInterviewStats(interviews);
   const recordingStats = getOrgRecordingStats(recordings);
+
+  const participantReports = buildParticipantReports(orgId, participants, interviews);
+  const interviewReports = buildInterviewReports(interviews, participants);
+  const recordingReports = buildRecordingReports(recordings, participants);
 
   const avgAutomation =
     interviews.length === 0
@@ -194,6 +356,10 @@ export function buildOrgAssessment(orgId: string): OrgAssessment {
 
   const bottlenecks = buildBottlenecks(interviews, participants);
   const automationIdeas = buildAutomationIdeas(interviews);
+  const totalRecoverableMinutes = automationIdeas.reduce(
+    (sum, idea) => sum + idea.minutesSavedPerWeek,
+    0
+  );
 
   const inefficiencies = ([
     {
@@ -236,40 +402,52 @@ export function buildOrgAssessment(orgId: string): OrgAssessment {
   const radar = [
     { dimension: "Process clarity", score: 72, fullMark: 100 },
     { dimension: "Automation readiness", score: avgAutomation, fullMark: 100 },
-    { dimension: "Tool integration", score: 100 - Math.min(avgContextSwitch, 85), fullMark: 100 },
+    {
+      dimension: "Tool integration",
+      score: 100 - Math.min(avgContextSwitch, 85),
+      fullMark: 100,
+    },
     { dimension: "Data quality", score: 68, fullMark: 100 },
     { dimension: "Handoff efficiency", score: 58, fullMark: 100 },
-    { dimension: "Observability", score: recordingStats.totalEvents > 20 ? 74 : 45, fullMark: 100 },
+    {
+      dimension: "Observability",
+      score: recordingStats.totalEvents > 20 ? 74 : 45,
+      fullMark: 100,
+    },
   ];
 
   const timeByCategory = [
     { category: "Data entry", hours: 8.5 },
-    { category: "Handoffs & waiting", hours: 6.2 },
+    { category: "Handoffs", hours: 6.2 },
     { category: "Context switching", hours: 5.8 },
-    { category: "Manual reporting", hours: 4.1 },
+    { category: "Reporting", hours: 4.1 },
     { category: "Approvals", hours: 3.4 },
   ];
 
   const maturityProgress = [
-    { area: "Interview coverage", current: Math.min(100, interviews.length * 25), target: 100 },
-    { area: "Session capture", current: Math.min(100, recordings.length * 12), target: 100 },
-    { area: "Workflow drafts", current: interviews.filter((i) => i.workflowId).length * 30 + 20, target: 100 },
+    {
+      area: "Interview coverage",
+      current: Math.min(100, interviews.length * 25),
+      target: 100,
+    },
+    {
+      area: "Session capture",
+      current: Math.min(100, recordings.length * 12),
+      target: 100,
+    },
+    {
+      area: "Workflow drafts",
+      current:
+        interviews.filter((i) => i.workflowId).length * 30 + 20,
+      target: 100,
+    },
     { area: "Automation deployed", current: 15, target: 100 },
   ];
 
-  const participantScores = participants.map((p) => {
-    const pInterviews = interviews.filter((i) => i.participantId === p.id);
-    const score =
-      pInterviews.length === 0
-        ? 40
-        : Math.round(
-            pInterviews.reduce(
-              (s, i) => s + getInterviewVisualMetrics(i).automationScore,
-              0
-            ) / pInterviews.length
-          );
-    return { name: p.name, automationPotential: score };
-  });
+  const participantScores = participantReports.map((p) => ({
+    name: p.name,
+    automationPotential: p.automationPotential,
+  }));
 
   const themeCount = interviewStats.themes.length;
   const overallScore = Math.round(
@@ -280,12 +458,25 @@ export function buildOrgAssessment(orgId: string): OrgAssessment {
       1.2
   );
 
+  const keyFindings = [
+    `${participants.length} participants contributed ${interviews.length} interviews and ${recordings.length} session recordings.`,
+    `${bottlenecks.length} critical bottlenecks account for ~${bottlenecks.reduce((s, b) => s + b.hoursPerWeek, 0)} hours lost per week.`,
+    `${automationIdeas.length} automation opportunities could recover ~${Math.round(totalRecoverableMinutes / 60)} hours weekly.`,
+    `Average context-switch rate across recordings: ${avgContextSwitch}% — above healthy threshold.`,
+    `Strongest automation readiness signal: ${radar.sort((a, b) => b.score - a.score)[0]?.dimension ?? "Process clarity"}.`,
+  ];
+
   return {
     orgId,
+    orgName,
     generatedAt: Date.now(),
     overallScore: Math.min(96, overallScore),
-    summary:
-      `Analysis of ${interviews.length} interviews and ${recordings.length} session recordings identified ${bottlenecks.length} critical bottlenecks and ${automationIdeas.length} high-ROI automation opportunities. Estimated recoverable time: ${automationIdeas.reduce((s, a) => s + a.minutesSavedPerWeek, 0)} minutes per week across the org.`,
+    summary: `This report synthesizes qualitative interviews, behavioral session recordings, and AI analysis across ${participants.length} participants. The org scores ${Math.min(96, overallScore)}/100 on automation readiness, with ${bottlenecks.length} bottlenecks and ${automationIdeas.length} high-ROI workflow opportunities identified.`,
+    keyFindings,
+    totalRecoverableMinutes,
+    participants: participantReports,
+    interviews: interviewReports,
+    recordings: recordingReports,
     radar,
     bottlenecks,
     inefficiencies,
@@ -293,5 +484,7 @@ export function buildOrgAssessment(orgId: string): OrgAssessment {
     timeByCategory,
     maturityProgress,
     participantScores,
+    interviewStats,
+    recordingStats,
   };
 }

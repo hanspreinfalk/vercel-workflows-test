@@ -1,4 +1,7 @@
-export { WorkspaceShell } from "./shell/workspace-shell";
-export { useWorkspace } from "./shell/workspace-context";
-export { OrgProvider, useOrg } from "./shell/org-context";
-export type { WorkflowSummary } from "./shell/workflow-selector";
+export { WorkspacePage, WorkspacePageHeader, HierarchyStrip } from "./layout/workspace-page";
+export { WorkspaceCard, MagicCard } from "./layout/workspace-card";
+export { InterviewsView } from "./views/interviews-view";
+export { RecordingsView } from "./views/recordings-view";
+export { ParticipantsView } from "./views/participants-view";
+export { AssessmentView } from "./views/assessment-view";
+export { RecordingDetailView } from "./views/recording-detail-view";

@@ -7,7 +7,7 @@ import {
   ProgressBars,
   VizBarChart,
   VizRadarChart,
-} from "@/app/components/chatzy/charts";
+} from "@/app/components/workspace/charts";
 
 export function InterviewVisualPanel({ metrics }: { metrics: InterviewVisualMetrics }) {
   const radarData = [
@@ -25,8 +25,8 @@ export function InterviewVisualPanel({ metrics }: { metrics: InterviewVisualMetr
   }));
 
   return (
-    <div className="viz-grid">
-      <div className="viz-grid__metrics">
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-3 gap-4 max-sm:grid-cols-1">
         <MetricRing value={metrics.automationScore} label="Automation fit" />
         <MetricRing
           value={Math.min(99, metrics.estimatedMinutesSaved)}

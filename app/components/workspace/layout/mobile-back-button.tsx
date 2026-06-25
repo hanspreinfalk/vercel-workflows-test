@@ -21,7 +21,11 @@ export function MobileBackButton({
     <button
       type="button"
       onClick={onClick}
-      className={cn("research-mobile-back", hideAt, className)}
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)]",
+        hideAt,
+        className
+      )}
       aria-label={label}
     >
       <ChevronLeft className="size-4" />

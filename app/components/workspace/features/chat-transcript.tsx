@@ -37,19 +37,17 @@ export function ChatTranscript({
   const turns = parseTranscript(text);
 
   return (
-    <div className={cn("chatzy-thread", className)}>
+    <div className={cn("flex flex-col gap-6", className)}>
       {turns.map((turn, index) => (
         <div
           key={`${turn.speaker}-${index}`}
-          className={cn(
-            "chatzy-bubble-row",
-            turn.isUser && "chatzy-bubble-row--end"
-          )}
+          className={cn("flex gap-3", turn.isUser && "flex-row-reverse")}
         >
           <div
             className={cn(
-              "chatzy-bubble-avatar",
-              !turn.isUser && "chatzy-bubble-avatar--brand"
+              "flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-muted)] text-xs font-medium text-[var(--text-primary)]",
+              !turn.isUser &&
+                "bg-[var(--brand-muted)] text-[var(--brand)]"
             )}
           >
             {turn.speaker.slice(0, 1).toUpperCase()}
@@ -60,10 +58,10 @@ export function ChatTranscript({
             </p>
             <div
               className={cn(
-                "chatzy-bubble max-w-full",
+                "max-w-full rounded-2xl px-4 py-3 text-sm leading-relaxed",
                 turn.isUser
-                  ? "chatzy-bubble--user"
-                  : "chatzy-bubble--system text-left"
+                  ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                  : "bg-[var(--surface-muted)] text-left text-[var(--text-primary)]"
               )}
             >
               {turn.text}
@@ -85,8 +83,8 @@ export function ChatInsight({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="chatzy-insight">
-      <p className="chatzy-insight__label">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-tertiary)]">
         <span aria-hidden>✦</span>
         {label}
       </p>

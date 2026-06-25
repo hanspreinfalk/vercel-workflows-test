@@ -422,14 +422,14 @@ export function NodeInspector({ node, onChange, onClose, onRemove }: NodeInspect
 
   if (!node) {
     return (
-      <aside className="builder-panel border-l p-4 text-sm text-[var(--text-secondary)]">
+      <aside className="border-l border-[var(--border)] bg-[var(--surface)] p-4 text-sm text-[var(--text-secondary)] max-lg:order-3 max-lg:max-h-[min(45vh,360px)]">
         {header}
       </aside>
     );
   }
 
   return (
-    <aside className="builder-panel flex min-h-0 flex-col border-l">
+    <aside className="flex min-h-0 flex-col border-l border-[var(--border)] bg-[var(--surface)] max-lg:order-3 max-lg:max-h-[min(45vh,360px)]">
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {header}
 

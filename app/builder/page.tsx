@@ -15,9 +15,11 @@ export default function BuilderIndexPage() {
   return (
     <WorkspaceShell {...shellProps} activeTab="workflows">
       <div className="flex h-full items-center justify-center px-6 py-16">
-        <div className="chatzy-card mx-auto max-w-md p-8 text-center">
-          <h1 className="chatzy-page-header__title text-xl">Create your first workflow</h1>
-          <p className="chatzy-page-header__desc mx-auto mt-3">
+        <div className="mx-auto max-w-md rounded-xl border border-border bg-card p-8 text-center">
+          <h1 className="text-xl font-medium tracking-tight text-foreground">
+            Create your first workflow
+          </h1>
+          <p className="mx-auto mt-3 text-sm text-muted-foreground">
             Design agent flows visually, run them in sandboxes, and let the
             assistant refine them from real execution logs.
           </p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { MobileBackButton } from "@/app/components/chatzy/mobile-back-button";
+import { MobileBackButton } from "@/app/components/workspace/layout/mobile-back-button";
 import {
   parseAgentEvent,
   type AgentActivityItem,
@@ -335,13 +335,15 @@ export function AgentChatPanel() {
     (liveActivity.length > 0 || streamingText || liveThinking || runningStep);
 
   return (
-    <div
-      className={cn(
-        "agent-chat grid min-h-0 flex-1 gap-0 lg:grid-cols-[280px_minmax(0,1fr)]",
-        mobileShowChat && "agent-chat--detail-open"
-      )}
-    >
-      <aside className="agent-chat__sidebar border-b border-[var(--border)] bg-[var(--surface-muted)] p-4 lg:border-r lg:border-b-0">
+    <div className="grid min-h-0 flex-1 gap-0 max-lg:min-h-[min(70vh,calc(100dvh-7rem))] lg:grid-cols-[280px_minmax(0,1fr)]">
+      <aside
+        className={cn(
+          "min-h-0 border-b border-[var(--border)] bg-[var(--surface-muted)] p-4 lg:border-r lg:border-b-0",
+          mobileShowChat
+            ? "max-lg:hidden"
+            : "max-lg:flex-1 max-lg:overflow-y-auto"
+        )}
+      >
         <div className="mb-4 flex items-center justify-between gap-2">
           <p className="text-sm font-medium text-[var(--text-primary)]">
             Conversations
@@ -384,7 +386,12 @@ export function AgentChatPanel() {
         </div>
       </aside>
 
-      <section className="agent-chat__main flex min-h-0 flex-col bg-[var(--surface)]">
+      <section
+        className={cn(
+          "flex min-h-0 flex-col bg-[var(--surface)]",
+          mobileShowChat ? "max-lg:flex-1" : "max-lg:hidden"
+        )}
+      >
         <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 sm:px-5 sm:py-4">
           <div className="flex min-w-0 items-center gap-2">
             <MobileBackButton

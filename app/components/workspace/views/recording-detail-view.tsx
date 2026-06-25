@@ -14,11 +14,11 @@ import {
 import {
   ResearchDetailBar,
   ResearchDetailBody,
-  ResearchSegment,
   ResearchShell,
   ResearchThread,
-} from "@/app/components/chatzy";
-import { MobileBackButton } from "@/app/components/chatzy/mobile-back-button";
+} from "@/app/components/workspace/layout/research-shell";
+import { MobileBackButton } from "@/app/components/workspace/layout/mobile-back-button";
+import { SegmentTabs } from "@/app/components/workspace/components/segment-tabs";
 import { RecordingVisualPanel } from "@/app/components/workspace/features/recording-visual-panel";
 import { getRecordingVisualMetrics } from "@/lib/workspace/recording-analytics";
 import { RecordingScreenshotMock } from "@/app/components/workspace/features/recording-screenshot-mock";
@@ -38,6 +38,12 @@ import {
   formatTimelineOffset,
 } from "@/lib/workspace/format";
 import { cn } from "@/lib/utils";
+
+const filterChipClass = (active: boolean) =>
+  cn(
+    "rounded-full border border-transparent px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground",
+    active && "border-border bg-card text-foreground shadow-sm"
+  );
 
 type EventFilter = "all" | RecordingEventType;
 
@@ -89,7 +95,7 @@ function EventPreview({ event }: { event: RecordingEvent }) {
 
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] px-6 py-12 text-center">
-      <div className="chatzy-bubble-avatar chatzy-bubble-avatar--brand mb-4 h-12 w-12">
+      <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-[var(--brand-muted)] text-[var(--brand)]">
         <Icon className="size-5" />
       </div>
       <p className="text-sm font-medium text-[var(--text-primary)]">
@@ -174,7 +180,11 @@ export function RecordingDetailView({
   return (
     <WorkspacePage className="overflow-hidden p-0 sm:p-0">
       <ResearchShell
-        className={!mobileDetailOpen ? "research-shell--list-first" : undefined}
+        className={
+          !mobileDetailOpen
+            ? "max-md:[&>aside]:max-h-none max-md:[&>aside]:flex-1 max-md:[&>main]:hidden"
+            : undefined
+        }
         detailOpen={mobileDetailOpen}
         title="Timeline"
         meta={`${events.length} events · ${formatDurationLong(recording.durationSec)}`}
@@ -185,10 +195,7 @@ export function RecordingDetailView({
                 key={value}
                 type="button"
                 onClick={() => setFilter(value)}
-                className={cn(
-                  "chatzy-chip",
-                  filter === value && "chatzy-chip--active"
-                )}
+                className={filterChipClass(filter === value)}
               >
                 {label}
               </button>
@@ -228,13 +235,13 @@ export function RecordingDetailView({
             }
             trailing={
               <div className="flex flex-wrap items-center gap-2">
-                <ResearchSegment
+                <SegmentTabs
                   tabs={[
-                    { id: "timeline", label: "Timeline" },
-                    { id: "analytics", label: "Analytics" },
+                    { id: "timeline" as const, label: "Timeline" },
+                    { id: "analytics" as const, label: "Analytics" },
                   ]}
                   active={detailTab}
-                  onChange={(id) => setDetailTab(id as "timeline" | "analytics")}
+                  onChange={setDetailTab}
                 />
                 <Link
                   href="/recordings"

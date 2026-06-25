@@ -34,7 +34,8 @@ import {
   TaskItem,
   TaskTrigger,
 } from "@/components/ai-elements/task";
-import { canRunFlow } from "@/lib/flow/credentials";
+import { canRunFlow, formatCredentialSavedMessage } from "@/lib/flow/credentials";
+import type { CredentialField, CredentialRequestPayload } from "@/lib/flow/credentials";
 import {
   applyFlowActions,
   isActionsEmpty,
@@ -55,7 +56,9 @@ import {
   type FlowRunDiagnostics,
 } from "@/lib/flow/run-diagnostics";
 import type { FlowEdge, FlowNode } from "@/lib/flow/types";
+import { getNodeLabel } from "@/lib/flow/types";
 import { cn } from "@/lib/utils";
+import { FlowBuilderCredentialRequestCard } from "./flow-builder-credential-request-card";
 
 const MAX_SELF_IMPROVE_TURNS = 4;
 
@@ -89,6 +92,7 @@ type FlowBuilderChatPanelProps = {
     edges: FlowEdge[];
   }) => Promise<{ ok: boolean; error?: string; runId?: string }>;
   onStopFlow: () => Promise<{ ok: boolean; error?: string }>;
+  onOpenCredentials?: () => void;
   onClose?: () => void;
   fullWidth?: boolean;
   bootstrapMessage?: string | null;
@@ -152,10 +156,23 @@ function diagnosticsToRunContext(
 
 function AssistantSegments({
   segments,
+  nodes,
   isAnimating = false,
+  onCredentialSave,
+  onCredentialSkip,
+  credentialsLocked = false,
 }: {
   segments: FlowBuilderChatSegment[];
+  nodes: FlowNode[];
   isAnimating?: boolean;
+  credentialsLocked?: boolean;
+  onCredentialSave?: (params: {
+    segmentIndex: number;
+    nodeId: string;
+    fields: CredentialField[];
+    nodes: FlowNode[];
+  }) => void;
+  onCredentialSkip?: (segmentIndex: number) => void;
 }) {
   const visible = trimEmptyTextSegments(segments);
   if (visible.length === 0) {
@@ -206,6 +223,25 @@ function AssistantSegments({
             );
           }
 
+          if (segment.type === "credentials") {
+            return (
+              <FlowBuilderCredentialRequestCard
+                key={`credentials-${index}`}
+                disabled={credentialsLocked}
+                nodes={nodes}
+                onSave={(params) => onCredentialSave?.({ segmentIndex: index, ...params })}
+                onSkip={
+                  segment.status === "pending" && onCredentialSkip
+                    ? () => onCredentialSkip(index)
+                    : undefined
+                }
+                request={segment.request}
+                savedFields={segment.savedFields}
+                status={segment.status}
+              />
+            );
+          }
+
           return (
             <Task className="rounded-xl border" defaultOpen key={`actions-${index}`}>
               <TaskTrigger title="Workflow changes" />
@@ -235,6 +271,7 @@ export function FlowBuilderChatPanel({
   onApplyFlow,
   onRunFlow,
   onStopFlow,
+  onOpenCredentials,
   onClose,
   fullWidth = true,
   bootstrapMessage,
@@ -277,6 +314,122 @@ export function FlowBuilderChatPanel({
     );
     return hasLiveText ? "streaming" : "submitted";
   }, [error, isThinking, liveSegments]);
+
+  function markCredentialSegmentComplete(params: {
+    target: "live" | { messageIndex: number };
+    segmentIndex: number;
+    fields: CredentialField[];
+  }) {
+    if (params.target === "live") {
+      setLiveSegments((current) =>
+        current
+          ? current.map((segment, index) =>
+              index === params.segmentIndex && segment.type === "credentials"
+                ? {
+                    ...segment,
+                    status: "completed" as const,
+                    savedFields: params.fields,
+                  }
+                : segment
+            )
+          : current
+      );
+      return;
+    }
+
+    setMessages((current) =>
+      current.map((message, messageIndex) => {
+        if (
+          params.target === "live" ||
+          messageIndex !== params.target.messageIndex ||
+          !message.segments
+        ) {
+          return message;
+        }
+
+        return {
+          ...message,
+          segments: message.segments.map((segment, index) =>
+            index === params.segmentIndex && segment.type === "credentials"
+              ? {
+                  ...segment,
+                  status: "completed" as const,
+                  savedFields: params.fields,
+                }
+              : segment
+          ),
+        };
+      })
+    );
+  }
+
+  function markCredentialSegmentSkipped(params: {
+    target: "live" | { messageIndex: number };
+    segmentIndex: number;
+  }) {
+    const applySkip = (segments: FlowBuilderChatSegment[]) =>
+      segments.map((segment, index) =>
+        index === params.segmentIndex && segment.type === "credentials"
+          ? { ...segment, status: "skipped" as const }
+          : segment
+      );
+
+    if (params.target === "live") {
+      setLiveSegments((current) => (current ? applySkip(current) : current));
+      return;
+    }
+
+    setMessages((current) =>
+      current.map((message, messageIndex) => {
+        if (
+          params.target === "live" ||
+          messageIndex !== params.target.messageIndex ||
+          !message.segments
+        ) {
+          return message;
+        }
+
+        return {
+          ...message,
+          segments: applySkip(message.segments),
+        };
+      })
+    );
+  }
+
+  async function handleCredentialSave(params: {
+    target: "live" | { messageIndex: number };
+    segmentIndex: number;
+    nodeId: string;
+    fields: CredentialField[];
+    nodes: FlowNode[];
+  }) {
+    const node = params.nodes.find((item) => item.id === params.nodeId);
+    const nextFlow: FlowState = {
+      ...flowStateRef.current,
+      nodes: params.nodes,
+    };
+    flowStateRef.current = nextFlow;
+    onApplyFlow(nextFlow);
+    onOpenCredentials?.();
+
+    markCredentialSegmentComplete({
+      target: params.target,
+      segmentIndex: params.segmentIndex,
+      fields: params.fields,
+    });
+
+    if (isThinking) {
+      return;
+    }
+
+    await submitPrompt(
+      formatCredentialSavedMessage({
+        nodeLabel: node ? getNodeLabel(node) : "Agent",
+        fields: params.fields,
+      })
+    );
+  }
 
   async function executeActions(
     actions: FlowBuilderActions
@@ -321,7 +474,7 @@ export function FlowBuilderChatPanel({
     if (result.runFlow) {
       if (!canRunFlow(nextFlow.nodes)) {
         summary.push(
-          "Run blocked — add skills, scripts, prompts, and credentials in the Credentials panel first"
+          "Run blocked — use the secure credential form or Credentials panel to add required secrets first"
         );
       } else {
         const runResult = await onRunFlow({
@@ -432,6 +585,20 @@ export function FlowBuilderChatPanel({
             }
             setLiveSegments([...segments]);
           }
+          continue;
+        }
+
+        if (streamEvent.type === "credential_request") {
+          segments = [
+            ...segments,
+            {
+              type: "credentials",
+              request: streamEvent.request,
+              status: "pending",
+            },
+          ];
+          onOpenCredentials?.();
+          setLiveSegments([...segments]);
           continue;
         }
 
@@ -575,12 +742,14 @@ export function FlowBuilderChatPanel({
   return (
     <aside
       className={cn(
-        "builder-chat flex min-h-0 flex-col",
-        fullWidth ? "builder-chat--full" : "builder-chat--panel"
+        "flex min-h-0 flex-1 flex-col",
+        fullWidth
+          ? "bg-[var(--canvas)]"
+          : "border-r border-[var(--border)] bg-[var(--surface)]"
       )}
     >
       {!fullWidth ? (
-        <div className="builder-chat__header flex items-center justify-between gap-2">
+        <div className="shrink-0 border-b border-[var(--border)] px-4 py-3.5 flex items-center justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-[var(--text-primary)]">
               Assistant
@@ -602,16 +771,16 @@ export function FlowBuilderChatPanel({
         </div>
       ) : null}
 
-      <Conversation className="builder-chat__thread">
+      <Conversation className="min-h-0 flex-1 overflow-y-auto">
         <ConversationContent
           className={cn(
-            "builder-chat__thread-inner gap-6",
-            fullWidth && "builder-chat__thread-inner--full"
+            "mx-auto w-full max-w-[44rem] gap-6 px-5 pt-6 pb-8 max-sm:px-3",
+            fullWidth && "max-w-[48rem] px-6 pt-8 pb-10"
           )}
         >
           {showEmptyState ? (
             <ConversationEmptyState
-              className="builder-chat-empty min-h-[min(420px,50vh)]"
+              className="flex min-h-[min(420px,50vh)] flex-col items-center justify-center text-center"
               description="Describe a workflow and I'll create it, run it, read the logs, and fix issues until it works."
               icon={
                 <div className="flex size-12 items-center justify-center rounded-2xl bg-[var(--surface-elevated)] text-[var(--text-secondary)] shadow-sm">
@@ -643,6 +812,19 @@ export function FlowBuilderChatPanel({
             ) : message.segments?.length ? (
               <AssistantSegments
                 key={`assistant-${index}`}
+                nodes={nodes}
+                onCredentialSave={(params) =>
+                  void handleCredentialSave({
+                    target: { messageIndex: index },
+                    ...params,
+                  })
+                }
+                onCredentialSkip={(segmentIndex) =>
+                  markCredentialSegmentSkipped({
+                    target: { messageIndex: index },
+                    segmentIndex,
+                  })
+                }
                 segments={message.segments}
               />
             ) : message.content.trim() ? (
@@ -657,7 +839,24 @@ export function FlowBuilderChatPanel({
           )}
 
           {liveSegments && liveSegments.length > 0 ? (
-            <AssistantSegments isAnimating segments={liveSegments} />
+            <AssistantSegments
+              isAnimating
+              nodes={nodes}
+              onCredentialSave={(params) =>
+                void handleCredentialSave({
+                  target: "live",
+                  ...params,
+                })
+              }
+              onCredentialSkip={(segmentIndex) =>
+                markCredentialSegmentSkipped({
+                  target: "live",
+                  segmentIndex,
+                })
+              }
+              segments={liveSegments}
+              credentialsLocked={isThinking}
+            />
           ) : isThinking ? (
             <Reasoning isStreaming open>
               <ReasoningTrigger />
@@ -674,10 +873,27 @@ export function FlowBuilderChatPanel({
         <ConversationScrollButton />
       </Conversation>
 
-      <div className="builder-chat__composer">
-        <div className="builder-chat__composer-inner">
+      <div
+        className={cn(
+          "shrink-0 border-t border-[var(--border)] bg-[var(--surface)] px-4 pt-3 pb-5 max-sm:px-3 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
+          fullWidth &&
+            "border-t-transparent bg-gradient-to-t from-[var(--surface)] from-70% to-transparent pb-6"
+        )}
+      >
+        <div
+          className={cn(
+            "mx-auto w-full max-w-[44rem]",
+            fullWidth && "max-w-[48rem] px-1"
+          )}
+        >
           <PromptInput
-            className="builder-chat-prompt-input"
+            className={cn(
+              "overflow-hidden rounded-[1.25rem] border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[0_2px_12px_rgba(0,0,0,0.15)]",
+              "focus-within:border-[color-mix(in_oklab,var(--brand)_40%,var(--border))] focus-within:shadow-[0_2px_20px_rgba(0,0,0,0.2)]",
+              fullWidth && "rounded-[1.5rem]",
+              "[&_[data-slot=input-group]]:border-none [&_[data-slot=input-group]]:bg-transparent [&_[data-slot=input-group]]:shadow-none",
+              "[&_textarea]:text-[0.9375rem] [&_textarea]:text-[var(--text-primary)]"
+            )}
             onSubmit={(message) => void handlePromptSubmit(message)}
           >
             <PromptInputBody>

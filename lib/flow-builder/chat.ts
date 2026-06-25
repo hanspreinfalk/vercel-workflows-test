@@ -2,6 +2,8 @@ import { getDefaultAgentLabel, isAgentNode } from "@/lib/agent/node-utils";
 import {
   formatMissingRequirementsForChat,
   getMissingFlowRequirements,
+  type CredentialField,
+  type CredentialRequestPayload,
 } from "@/lib/flow/credentials";
 import {
   inferFlowActionsFromUserMessage,
@@ -25,7 +27,13 @@ export type FlowBuilderChatRole = "user" | "assistant";
 export type FlowBuilderChatSegment =
   | { type: "text"; content: string }
   | { type: "actions"; summary: string[] }
-  | { type: "run_report"; status: string; summary: string[] };
+  | { type: "run_report"; status: string; summary: string[] }
+  | {
+      type: "credentials";
+      request: CredentialRequestPayload;
+      status: "pending" | "completed" | "skipped";
+      savedFields?: CredentialField[];
+    };
 
 export type FlowBuilderChatMessage = {
   role: FlowBuilderChatRole;
@@ -39,6 +47,7 @@ export type FlowBuilderChatStreamEvent =
   | { type: "token"; token: string }
   | { type: "text_end" }
   | { type: "actions"; actions: FlowBuilderActions }
+  | { type: "credential_request"; request: CredentialRequestPayload }
   | { type: "done"; content: string; actions: FlowBuilderActions }
   | { type: "error"; message: string };
 
@@ -124,8 +133,9 @@ Each agent node has: label, **skill** (repeatable workflow with **instructions**
 ## REQUIRED: credentials before run
 - Runs are **blocked** until every agent has: skill name + instructions + script, a concrete prompt, Anthropic API key, and GitHub credentials when github permission is enabled.
 - Context includes **missingCredentials** — when non-empty, do NOT set runFlow: true.
-- Ask the user for each missing token clearly. Tell them to paste values in the **Credentials** panel (never echo secrets back in chat).
-- After the user confirms credentials are filled, verify missingCredentials is empty before running.
+- Call **request_credentials** to show a secure in-chat form for the user. Never ask users to paste API keys or tokens in chat messages.
+- Never put secret values in apply_flow_actions — credentials are collected only via request_credentials.
+- After the user saves credentials in the secure form, they will send a confirmation message (without secret values). Verify missingCredentials is empty before running.
 
 ## REQUIRED: skill + script for every agent
 Every agent node MUST have:
@@ -138,10 +148,12 @@ Every agent node MUST have:
    echo "Preparing workspace..."
    \`\`\`
 
-## REQUIRED: use the apply_flow_actions tool
-Whenever the user asks to create, build, configure, connect, run, or stop anything on the canvas, you MUST call **apply_flow_actions** with the full change set.
+## REQUIRED: use tools
+Whenever the user asks to create, build, configure, connect, run, or stop anything on the canvas, call **apply_flow_actions**.
 
-Do NOT only describe what you would do. Do NOT put JSON in markdown fences — use the tool only.
+When agents need API keys or tokens, call **request_credentials** (one agent per call). The UI collects secrets locally — they never appear in chat.
+
+Do NOT only describe what you would do. Do NOT put JSON in markdown fences — use tools only.
 
 ### Examples of when to call the tool
 - "Create an agent that summarizes a GitHub repo" → remove extra placeholder agents, configure trigger + one agent with github permission, repo-summary skill, wired edge
@@ -538,17 +550,6 @@ const APPLY_FLOW_ACTIONS_TOOL = {
                 },
               },
             },
-            secrets: {
-              type: "object",
-              description:
-                "Do not invent secrets — only set when user explicitly provided values in chat",
-              properties: {
-                anthropicApiKey: { type: "string" },
-                githubToken: { type: "string" },
-                githubRepoUrl: { type: "string" },
-                githubUser: { type: "string" },
-              },
-            },
           },
           required: ["type"],
         },
@@ -598,15 +599,6 @@ const APPLY_FLOW_ACTIONS_TOOL = {
                 script: { type: "string" },
               },
             },
-            secrets: {
-              type: "object",
-              properties: {
-                anthropicApiKey: { type: "string" },
-                githubToken: { type: "string" },
-                githubRepoUrl: { type: "string" },
-                githubUser: { type: "string" },
-              },
-            },
           },
         },
       },
@@ -616,6 +608,36 @@ const APPLY_FLOW_ACTIONS_TOOL = {
     },
   },
 };
+
+const REQUEST_CREDENTIALS_TOOL = {
+  name: "request_credentials",
+  description:
+    "Show a secure in-chat credential form for an agent node. Use when missingCredentials lists credential issues or before runFlow when secrets are required. Never ask users to paste secrets in chat.",
+  input_schema: {
+    type: "object",
+    properties: {
+      nodeId: { type: "string", description: "Agent node id from the flow snapshot" },
+      nodeLabel: {
+        type: "string",
+        description: "Agent label if nodeId is unknown",
+      },
+      fields: {
+        type: "array",
+        description: "Credential fields to collect; defaults to all missing required fields",
+        items: {
+          type: "string",
+          enum: ["anthropicApiKey", "githubToken", "githubRepoUrl", "githubUser"],
+        },
+      },
+      reason: {
+        type: "string",
+        description: "Short explanation shown above the form",
+      },
+    },
+  },
+};
+
+const FLOW_BUILDER_TOOLS = [APPLY_FLOW_ACTIONS_TOOL, REQUEST_CREDENTIALS_TOOL];
 
 function getLastUserMessage(messages: FlowBuilderChatMessage[]) {
   return [...messages].reverse().find((message) => message.role === "user");
@@ -837,7 +859,7 @@ export async function streamFlowBuilderChat(params: {
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       stream: true,
-      tools: [APPLY_FLOW_ACTIONS_TOOL],
+      tools: FLOW_BUILDER_TOOLS,
       tool_choice: forceTool
         ? { type: "tool", name: "apply_flow_actions" }
         : { type: "auto" },
@@ -882,6 +904,7 @@ export async function streamFlowBuilderChat(params: {
   let toolInputJson = "";
   let toolActions: FlowBuilderActions | null = null;
   let activeBlockType: "text" | "tool_use" | null = null;
+  let activeToolName: string | null = null;
   let activeToolInputJson = "";
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -917,6 +940,7 @@ export async function streamFlowBuilderChat(params: {
             params.onEvent({ type: "text_start" });
           } else if (event.content_block?.type === "tool_use") {
             activeBlockType = "tool_use";
+            activeToolName = event.content_block.name ?? null;
             activeToolInputJson = "";
           }
         }
@@ -946,16 +970,24 @@ export async function streamFlowBuilderChat(params: {
             params.onEvent({ type: "text_end" });
           } else if (activeBlockType === "tool_use" && activeToolInputJson) {
             try {
-              const blockActions = JSON.parse(
-                activeToolInputJson
-              ) as FlowBuilderActions;
-              toolActions = blockActions;
-              params.onEvent({ type: "actions", actions: blockActions });
+              if (activeToolName === "request_credentials") {
+                const request = JSON.parse(
+                  activeToolInputJson
+                ) as CredentialRequestPayload;
+                params.onEvent({ type: "credential_request", request });
+              } else if (activeToolName === "apply_flow_actions") {
+                const blockActions = JSON.parse(
+                  activeToolInputJson
+                ) as FlowBuilderActions;
+                toolActions = blockActions;
+                params.onEvent({ type: "actions", actions: blockActions });
+              }
             } catch {
               // Wait for final parse below.
             }
           }
           activeBlockType = null;
+          activeToolName = null;
           activeToolInputJson = "";
         }
       } catch {

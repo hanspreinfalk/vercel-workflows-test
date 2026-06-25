@@ -2,30 +2,17 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { Button } from "@/app/components/shared/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   HierarchyStrip,
-  MagicCard,
   WorkspacePage,
   WorkspacePageHeader,
 } from "@/app/components/workspace/layout/workspace-page";
+import { WorkspaceCard } from "@/app/components/workspace/layout/workspace-card";
 import { useWorkspace } from "@/app/components/workspace/shell/workspace-context";
 import { listParticipants } from "@/lib/workspace/org-store";
-
-function formatRelativeTime(timestamp: number) {
-  const hours = Math.round((Date.now() - timestamp) / (1000 * 60 * 60));
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
+import { formatRelativeTime, initials } from "@/lib/workspace/format";
 
 export function ParticipantsView() {
   const { orgId, organizations } = useWorkspace();
@@ -50,56 +37,86 @@ export function ParticipantsView() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {participants.map((participant) => (
-          <MagicCard key={participant.id} className="p-5">
+          <WorkspaceCard key={participant.id} className="p-5">
             <div className="flex items-start gap-3">
-              <div className="chatzy-bubble-avatar chatzy-bubble-avatar--brand h-11 w-11 text-sm">
-                {initials(participant.name)}
-              </div>
+              <Avatar size="default">
+                <AvatarFallback className="bg-brand/10 text-brand text-sm font-medium">
+                  {initials(participant.name)}
+                </AvatarFallback>
+              </Avatar>
               <div className="min-w-0 flex-1">
-                <h3 className="truncate text-base font-medium">{participant.name}</h3>
-                <p className="truncate text-sm text-[var(--text-secondary)]">
+                <h3 className="truncate text-base font-medium">
+                  {participant.name}
+                </h3>
+                <p className="truncate text-sm text-muted-foreground">
                   {participant.role}
                 </p>
-                <p className="mt-0.5 truncate text-xs text-[var(--text-tertiary)]">
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {participant.email}
                 </p>
               </div>
             </div>
 
-            <div className="chatzy-mini-stats">
-              <div className="chatzy-mini-stat">
-                <p className="chatzy-mini-stat__value">{participant.interviewCount}</p>
-                <p className="chatzy-mini-stat__label">Interviews</p>
-              </div>
-              <div className="chatzy-mini-stat">
-                <p className="chatzy-mini-stat__value">{participant.recordingCount}</p>
-                <p className="chatzy-mini-stat__label">Recordings</p>
-              </div>
-              <div className="chatzy-mini-stat">
-                <p className="chatzy-mini-stat__value text-sm">
-                  {formatRelativeTime(participant.lastActiveAt)}
-                </p>
-                <p className="chatzy-mini-stat__label">Active</p>
-              </div>
+            <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4">
+              <Stat value={String(participant.interviewCount)} label="Interviews" />
+              <Stat value={String(participant.recordingCount)} label="Recordings" />
+              <Stat
+                value={formatRelativeTime(participant.lastActiveAt)}
+                label="Active"
+                small
+              />
             </div>
 
             <div className="mt-4 flex gap-2">
               <Link
                 href="/interviews"
-                className="ui-btn-ghost flex-1 rounded-full py-2.5 text-center text-xs font-medium"
+                className={buttonVariants({
+                  variant: "outline",
+                  size: "sm",
+                  className: "flex-1",
+                })}
               >
                 Interviews
               </Link>
               <Link
                 href="/recordings"
-                className="ui-btn-ghost flex-1 rounded-full py-2.5 text-center text-xs font-medium"
+                className={buttonVariants({
+                  variant: "outline",
+                  size: "sm",
+                  className: "flex-1",
+                })}
               >
                 Recordings
               </Link>
             </div>
-          </MagicCard>
+          </WorkspaceCard>
         ))}
       </div>
     </WorkspacePage>
+  );
+}
+
+function Stat({
+  value,
+  label,
+  small,
+}: {
+  value: string;
+  label: string;
+  small?: boolean;
+}) {
+  return (
+    <div className="text-center">
+      <p
+        className={
+          small
+            ? "text-sm font-semibold tabular-nums text-foreground"
+            : "text-lg font-semibold tabular-nums text-foreground"
+        }
+      >
+        {value}
+      </p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
   );
 }

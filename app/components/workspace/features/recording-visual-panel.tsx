@@ -8,7 +8,7 @@ import {
   VizActivityChart,
   VizBarChart,
   VizStackedLegend,
-} from "@/app/components/chatzy/charts";
+} from "@/app/components/workspace/charts";
 
 export function RecordingVisualPanel({
   metrics,
@@ -26,8 +26,8 @@ export function RecordingVisualPanel({
   }));
 
   return (
-    <div className="viz-grid">
-      <div className="viz-grid__metrics">
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-3 gap-4 max-sm:grid-cols-1">
         <MetricRing
           value={Math.min(100, Math.round(metrics.eventsPerMinute * 8))}
           label="Activity density"

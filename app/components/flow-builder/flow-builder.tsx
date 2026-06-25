@@ -3,7 +3,6 @@
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   addEdge,
   useEdgesState,
@@ -13,15 +12,15 @@ import {
   BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import "./flow-builder.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { AddNodeMenu } from "./toolbar/add-node-menu";
 import { WorkspaceShell } from "@/app/components/workspace/shell/workspace-shell";
 import type { WorkflowSummary } from "@/app/components/workspace/shell/workflow-selector";
 import { NodeInspector } from "./panels/node-inspector";
 import { FlowBuilderChatPanel } from "./panels/flow-builder-chat-panel";
-import { FlowBuilderCredentialsPanel } from "./panels/flow-builder-credentials-panel";
+import { FlowBuilderCredentialsView } from "./panels/flow-builder-credentials-view";
 import { FlowRunLogsPanel } from "./panels/flow-run-logs-panel";
 import { useFlowRunStream } from "./runs/use-flow-run-stream";
 import {
@@ -93,9 +92,22 @@ export function FlowBuilder({
   }, [initialFlow.id]);
 
   const mainGridClass = useMemo(() => {
-    if (canvasOpen && inspectorOpen) return "flow-builder-grid--split-inspector";
-    if (canvasOpen) return "flow-builder-grid--split";
-    return "flow-builder-grid--chat-full";
+    const base = "grid min-h-0 flex-1 grid-cols-1";
+    if (canvasOpen && inspectorOpen) {
+      return cn(
+        base,
+        "lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)_minmax(280px,320px)]",
+        "max-lg:grid-cols-1 max-lg:grid-rows-[auto_auto_auto]"
+      );
+    }
+    if (canvasOpen) {
+      return cn(
+        base,
+        "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]",
+        "max-lg:grid-cols-1 max-lg:grid-rows-[auto_auto]"
+      );
+    }
+    return base;
   }, [canvasOpen, inspectorOpen]);
 
   const { nodeStates, activeNodeId, runStatus, error: runError, events, results } =
@@ -483,7 +495,7 @@ export function FlowBuilder({
       activeTab="workflows"
       toolbar={toolbar}
     >
-    <div className="flow-builder-shell flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--canvas)]">
 
       {error ? (
         <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-sm text-red-400">
@@ -491,14 +503,23 @@ export function FlowBuilder({
         </div>
       ) : null}
 
-      <div className={`flow-builder-grid ${mainGridClass}`}>
-        <div className="flow-builder-chat-column">
-          <div className="flow-builder-chat-toolbar">
-            <div className="flow-builder-chat-toolbar__left">
+      <div className={mainGridClass}>
+        <div
+          className={cn(
+            "flex min-h-0 flex-col bg-[var(--canvas)]",
+            canvasOpen && "max-lg:order-1"
+          )}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-3 py-2 max-lg:flex-wrap max-lg:gap-2 sm:px-4">
+            <div className="flex items-center gap-1.5 max-lg:w-full max-lg:flex-wrap">
               <button
                 type="button"
                 onClick={() => setCanvasOpen((open) => !open)}
-                className={`flow-panel-toggle ${canvasOpen ? "flow-panel-toggle--active" : ""}`}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border border-transparent bg-transparent px-3.5 py-[0.4375rem] text-[0.8125rem] font-medium text-[var(--text-secondary)] transition-[background,color,border-color] duration-[120ms] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] max-lg:px-2.5 max-lg:text-xs",
+                  canvasOpen &&
+                    "border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-[var(--shadow-soft)]"
+                )}
                 aria-pressed={canvasOpen}
               >
                 <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor">
@@ -509,7 +530,12 @@ export function FlowBuilder({
               <button
                 type="button"
                 onClick={() => setCredentialsOpen((open) => !open)}
-                className={`flow-panel-toggle ${credentialsOpen ? "flow-panel-toggle--active" : ""} ${!runReady ? "text-[var(--brand)]" : ""}`}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border border-transparent bg-transparent px-3.5 py-[0.4375rem] text-[0.8125rem] font-medium text-[var(--text-secondary)] transition-[background,color,border-color] duration-[120ms] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] max-lg:px-2.5 max-lg:text-xs",
+                  credentialsOpen &&
+                    "border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-[var(--shadow-soft)]",
+                  !runReady && "text-[var(--brand)]"
+                )}
                 aria-pressed={credentialsOpen}
               >
                 <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor">
@@ -526,7 +552,11 @@ export function FlowBuilder({
                 <button
                   type="button"
                   onClick={() => setInspectorOpen((open) => !open)}
-                  className={`flow-panel-toggle ${inspectorOpen ? "flow-panel-toggle--active" : ""}`}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border border-transparent bg-transparent px-3.5 py-[0.4375rem] text-[0.8125rem] font-medium text-[var(--text-secondary)] transition-[background,color,border-color] duration-[120ms] hover:bg-[var(--surface-muted)] hover:text-[var(--text-primary)] max-lg:px-2.5 max-lg:text-xs",
+                    inspectorOpen &&
+                      "border-[var(--border)] bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-[var(--shadow-soft)]"
+                  )}
                   aria-pressed={inspectorOpen}
                 >
                   <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor">
@@ -540,9 +570,18 @@ export function FlowBuilder({
             <div className="flex items-center gap-2">
               {runStatusLabel ? (
                 <span
-                  className={`flow-run-pill ${isRunActive ? "flow-run-pill--running" : ""}`}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-elevated)] px-2.5 py-1 text-[0.6875rem] font-medium text-[var(--text-secondary)]",
+                    isRunActive &&
+                      "border-[color-mix(in_oklab,var(--brand)_35%,var(--border))] text-[var(--brand)]"
+                  )}
                 >
-                  <span className="flow-run-pill__dot" />
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full bg-current",
+                      isRunActive && "animate-pulse"
+                    )}
+                  />
                   {runStatusLabel}
                   {runError ? ` — ${runError}` : null}
                 </span>
@@ -555,53 +594,61 @@ export function FlowBuilder({
             </div>
           </div>
 
-          <FlowBuilderChatPanel
-            flowId={initialFlow.id}
-            flowName={flowName}
-            nodes={flowNodes}
-            edges={fromReactFlowEdges(edges)}
-            selectedNodeId={selectedNodeId}
-            activeRunId={activeRunId}
-            runStatus={runStatus}
-            isRunning={isRunning}
-            bootstrapMessage={bootstrapMessage}
-            lastRun={
-              activeRunId
-                ? {
-                    runId: activeRunId,
-                    status: runStatus,
-                    error: runError,
-                    events,
-                    nodeOutputs: nodeStates,
-                    results,
-                  }
-                : null
-            }
-            onApplyFlow={applyFlowFromChat}
-            onRunFlow={(payload) => handleRun(payload)}
-            onStopFlow={handleStopRun}
-            fullWidth
-          />
-
           {credentialsOpen ? (
-            <FlowBuilderCredentialsPanel
-              className="flow-credentials-panel--inline"
+            <FlowBuilderCredentialsView
+              flowName={flowName}
               nodes={flowNodes}
               onUpdateNode={updateAgentNode}
               onSelectNode={(nodeId) => {
                 selectNode(nodeId, { openCanvas: true });
               }}
             />
-          ) : null}
+          ) : (
+            <FlowBuilderChatPanel
+              flowId={initialFlow.id}
+              flowName={flowName}
+              nodes={flowNodes}
+              edges={fromReactFlowEdges(edges)}
+              selectedNodeId={selectedNodeId}
+              activeRunId={activeRunId}
+              runStatus={runStatus}
+              isRunning={isRunning}
+              bootstrapMessage={bootstrapMessage}
+              lastRun={
+                activeRunId
+                  ? {
+                      runId: activeRunId,
+                      status: runStatus,
+                      error: runError,
+                      events,
+                      nodeOutputs: nodeStates,
+                      results,
+                    }
+                  : null
+              }
+              onApplyFlow={applyFlowFromChat}
+              onRunFlow={(payload) => handleRun(payload)}
+              onStopFlow={handleStopRun}
+              onOpenCredentials={() => setCredentialsOpen(true)}
+              fullWidth
+            />
+          )}
         </div>
 
         {canvasOpen ? (
-        <div className="flow-canvas-wrap">
+        <div
+          className={cn(
+            "relative flex min-h-0 flex-1 flex-col bg-[#0c0c0c]",
+            "max-lg:order-2 max-lg:min-h-[min(50vh,420px)]"
+          )}
+        >
           <div className="flow-builder-canvas relative min-h-0 flex-1">
             {nodes.length === 0 ? (
-              <div className="flow-canvas-empty">
-                <p className="flow-canvas-empty__title">Empty workflow</p>
-                <p className="flow-canvas-empty__hint">
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-8 text-center">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  Empty workflow
+                </p>
+                <p className="max-w-64 text-xs leading-normal text-[var(--text-secondary)]">
                   Add a Start node from the toolbar, or ask the assistant to
                   build one for you.
                 </p>
@@ -627,7 +674,6 @@ export function FlowBuilder({
                 size={1}
                 color="#27272a"
               />
-              <MiniMap pannable zoomable />
               <Controls showInteractive={false} position="bottom-left" />
             </ReactFlow>
           </div>

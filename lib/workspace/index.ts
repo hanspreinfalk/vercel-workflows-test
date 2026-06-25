@@ -3,4 +3,8 @@ export * from "./server";
 export * from "./format";
 export * from "./org-store";
 export * from "./recording-events";
+export * from "./recording-event-label";
 export * from "./workflow-from-research";
+export * from "./assessment";
+export * from "./interview-analytics";
+export * from "./recording-analytics";
